@@ -1,0 +1,499 @@
+{
+  "name": "claudes",
+  "displayName": "ClaudeS - Accounts Manager",
+  "description": "Keep several Claude Code accounts side by side and open a terminal on any of them with one click. Only the login is separate — your settings, skills and MCP servers stay shared — and your Claude Code installation is never written to. Independent project, not affiliated with Anthropic.",
+  "version": "0.2.0",
+  "publisher": "VeleaWebVR",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "claudes.switchAccount",
+        "title": "Switch Account",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.newProfile",
+        "title": "New Account Profile",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.renameProfile",
+        "title": "Rename Account Label",
+        "icon": "$(edit)",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.openConfigFolder",
+        "title": "Open Active Profile Config Folder",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.openSettings",
+        "title": "General Settings",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.startHere",
+        "title": "Start Here — Pick an Account and Open a Terminal",
+        "category": "ClaudeS",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "claudes.focusTerminal",
+        "title": "Focus the ClaudeS Terminal",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.restoreLayout",
+        "title": "Restore the Window Layout",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.switchToProfile",
+        "title": "Switch to This Account",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.forgetProfile",
+        "title": "Delete Account and Its Credentials",
+        "category": "ClaudeS",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "claudes.toggleAnonymise",
+        "title": "Hide or Show Who the Accounts Belong To",
+        "category": "ClaudeS",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "claudes.refreshProfiles",
+        "title": "Refresh",
+        "category": "ClaudeS",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claudes.newProfileFromView",
+        "title": "New Account",
+        "category": "ClaudeS",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claudes.showFootprint",
+        "title": "What Is Stored / Before Uninstalling",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.setProfileColor",
+        "title": "Set Account Colour",
+        "category": "ClaudeS",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "claudes.refreshIdentities",
+        "title": "Re-check Who Is Signed In",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.manageAccounts",
+        "title": "Edit Accounts",
+        "category": "ClaudeS",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "claudes.backToAccounts",
+        "title": "Done",
+        "category": "ClaudeS",
+        "icon": "$(check)"
+      },
+      {
+        "command": "claudes.revealAccounts",
+        "title": "Show Accounts",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.openAccountPage",
+        "title": "Open Account",
+        "category": "ClaudeS",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "claudes.openAccountFolder",
+        "title": "Open Account Folder",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.closeAccountTerminals",
+        "title": "Close All of This Account's Terminals",
+        "category": "ClaudeS",
+        "icon": "$(close)"
+      },
+      {
+        "command": "claudes.toggleSharing",
+        "title": "Share or Separate This Account's Setup",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.reloadAccounts",
+        "title": "Reload the Account List",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.signIn",
+        "title": "Sign In to an Account",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.signOut",
+        "title": "Sign Out of an Account",
+        "category": "ClaudeS"
+      },
+      {
+        "command": "claudes.toggleAnonymiseOff",
+        "title": "Show Who the Accounts Belong To",
+        "category": "ClaudeS",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "claudes.copyDocsForClaude",
+        "title": "Copy the Documentation for Claude",
+        "category": "ClaudeS"
+      }
+    ],
+    "configuration": {
+      "title": "ClaudeS - Accounts Manager",
+      "properties": {
+        "claudes.profilesRoot": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder where new accounts are created. Leave empty to place them beside your Claude Code configuration, in a folder of ours: `~/.claudes` next to `~/.claude`. Never inside it, so uninstalling leaves nothing behind in another program's folder. Supports `~` for your home folder.",
+          "scope": "application"
+        },
+        "claudes.anonymiseAccounts": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Hide who these accounts belong to.\n\nAccounts are listed as **Account 1**, **Account 2**, ... and signed-in addresses are masked as `o****@l****.com` — enough shape to recognise your own, not enough for anyone else. Folder paths are hidden too, since they carry the name.\n\nFor sharing a screen, presenting, or taking screenshots. Colours stay as they are: they identify a row to you and reveal nothing.\n\nTerminals already open keep the name they were created with.",
+          "scope": "application"
+        },
+        "claudes.autoStartClaude": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the 'claude' command automatically in the terminal opened when switching account. Turn off to get a ready terminal without starting Claude Code.",
+          "scope": "application"
+        },
+        "claudes.claudeCommand": {
+          "type": "string",
+          "default": "claude",
+          "description": "Command used to start Claude Code in the terminal. Change it if the CLI is installed under a different name or path.",
+          "scope": "application"
+        },
+        "claudes.closeOtherProfileTerminals": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Close terminals belonging to other accounts when opening a new one.\n\n**Off** (default): accounts sit side by side. Some of a job on the client's account, some on your own, in the same project — each terminal keeps the account it was created with, named and coloured on its own tab.\n\n**On**: only one account has a terminal open at a time.",
+          "scope": "application"
+        },
+        "claudes.shareSetupWithNewAccounts": {
+          "type": "string",
+          "enum": [
+            "always",
+            "ask",
+            "never"
+          ],
+          "default": "always",
+          "enumDescriptions": [
+            "Share automatically. A new account gets your permissions, MCP servers, skills and plugins.",
+            "Ask each time a new account is created.",
+            "Never share. Every account starts with a clean environment."
+          ],
+          "markdownDescription": "Permissions, MCP servers, skills and plugins live **inside each account folder**, so a brand new account starts without any of them — and every command asks for confirmation again.\n\nThis setting decides what happens when you create an account.\n\n**Always** (default): the new account is linked to your main setup. Only the login differs, so switching account changes who pays and nothing else.\n\n**Ask**: choose per account. Useful when some clients have their own MCP servers and rules and others do not.\n\n**Never**: every account is a clean, fully separate environment.\n\nCredentials and chat history are *never* shared, whatever this is set to.",
+          "scope": "application"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claudes",
+          "title": "ClaudeS",
+          "icon": "resources/icon-sidebar.png"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "claudes.profiles",
+        "contents": "No accounts yet.\n\nEach account is one Claude login with a folder of its own. Add one, sign in to it once, and from then on its + opens a terminal on it.\n\n[Add an Account](command:claudes.newProfile)\n\nIf Claude Code is signed in on this computer when ClaudeS first starts, that account is added for you.\n\n\n\nQuestions or problems? We recommend asking Claude first: the answer is usually in the documentation.\n\n[Copy the Documentation for Claude](command:claudes.copyDocsForClaude)\n\nPaste it into Claude and add your question. It is always in the … menu above, too."
+      }
+    ],
+    "views": {
+      "claudes": [
+        {
+          "id": "claudes.profiles",
+          "name": "Accounts",
+          "icon": "resources/icon-sidebar.png"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "claudes.startHere",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudes.backToAccounts",
+          "when": "view == claudes.profiles && claudes.viewMode != 'choose'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "claudes.newProfileFromView",
+          "when": "view == claudes.profiles && claudes.viewMode == 'manage'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudes.manageAccounts",
+          "when": "view == claudes.profiles && claudes.viewMode == 'choose'",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudes.refreshProfiles",
+          "when": "view == claudes.profiles && claudes.viewMode != 'account'",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudes.openSettings",
+          "when": "view == claudes.profiles",
+          "group": "1_settings@1"
+        },
+        {
+          "command": "claudes.toggleAnonymise",
+          "when": "view == claudes.profiles && claudes.viewMode == 'choose' && !claudes.anonymising",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudes.toggleAnonymiseOff",
+          "when": "view == claudes.profiles && claudes.viewMode == 'choose' && claudes.anonymising",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudes.copyDocsForClaude",
+          "when": "view == claudes.profiles",
+          "group": "1_settings@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudes.openAccountPage",
+          "when": "view == claudes.profiles && viewItem == claudesProfileManage",
+          "group": "inline@0"
+        },
+        {
+          "command": "claudes.forgetProfile",
+          "when": "view == claudes.profiles && viewItem == claudesProfileManage",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudes.openAccountFolder",
+          "when": "view == claudes.profiles && viewItem == claudesFolderField",
+          "group": "inline@0"
+        },
+        {
+          "command": "claudes.closeAccountTerminals",
+          "when": "view == claudes.profiles && viewItem == claudesProfileRunning",
+          "group": "inline@0"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "claudes.switchToProfile",
+          "when": "false"
+        },
+        {
+          "command": "claudes.refreshProfiles",
+          "when": "false"
+        },
+        {
+          "command": "claudes.newProfileFromView",
+          "when": "false"
+        },
+        {
+          "command": "claudes.backToAccounts",
+          "when": "false"
+        },
+        {
+          "command": "claudes.manageAccounts",
+          "when": "false"
+        },
+        {
+          "command": "claudes.openAccountPage",
+          "when": "false"
+        },
+        {
+          "command": "claudes.openAccountFolder",
+          "when": "false"
+        },
+        {
+          "command": "claudes.closeAccountTerminals",
+          "when": "false"
+        }
+      ]
+    },
+    "colors": [
+      {
+        "id": "claudes.account.green",
+        "description": "Green account marker in the accounts list.",
+        "defaults": {
+          "light": "#2E7D32",
+          "dark": "#66BB6A",
+          "highContrast": "#66BB6A",
+          "highContrastLight": "#2E7D32"
+        }
+      },
+      {
+        "id": "claudes.account.blue",
+        "description": "Blue account marker in the accounts list.",
+        "defaults": {
+          "light": "#1565C0",
+          "dark": "#64B5F6",
+          "highContrast": "#64B5F6",
+          "highContrastLight": "#1565C0"
+        }
+      },
+      {
+        "id": "claudes.account.lightblue",
+        "description": "Light blue account marker in the accounts list.",
+        "defaults": {
+          "light": "#0277BD",
+          "dark": "#4FC3F7",
+          "highContrast": "#4FC3F7",
+          "highContrastLight": "#0277BD"
+        }
+      },
+      {
+        "id": "claudes.account.purple",
+        "description": "Purple account marker in the accounts list.",
+        "defaults": {
+          "light": "#6A1B9A",
+          "dark": "#BA68C8",
+          "highContrast": "#BA68C8",
+          "highContrastLight": "#6A1B9A"
+        }
+      },
+      {
+        "id": "claudes.account.orange",
+        "description": "Orange account marker in the accounts list.",
+        "defaults": {
+          "light": "#E65100",
+          "dark": "#FFA726",
+          "highContrast": "#FFA726",
+          "highContrastLight": "#E65100"
+        }
+      },
+      {
+        "id": "claudes.account.red",
+        "description": "Red account marker in the accounts list.",
+        "defaults": {
+          "light": "#C62828",
+          "dark": "#EF5350",
+          "highContrast": "#EF5350",
+          "highContrastLight": "#C62828"
+        }
+      },
+      {
+        "id": "claudes.account.teal",
+        "description": "Teal account marker in the accounts list.",
+        "defaults": {
+          "light": "#00695C",
+          "dark": "#4DB6AC",
+          "highContrast": "#4DB6AC",
+          "highContrastLight": "#00695C"
+        }
+      },
+      {
+        "id": "claudes.account.brown",
+        "description": "Brown account marker in the accounts list.",
+        "defaults": {
+          "light": "#4E342E",
+          "dark": "#A1887F",
+          "highContrast": "#A1887F",
+          "highContrastLight": "#4E342E"
+        }
+      },
+      {
+        "id": "claudes.account.grey",
+        "description": "Grey account marker in the accounts list.",
+        "defaults": {
+          "light": "#37474F",
+          "dark": "#B0BEC5",
+          "highContrast": "#B0BEC5",
+          "highContrastLight": "#37474F"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0",
+    "@vscode/vsce": "^2.24.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VaniaRensi/claudes.git"
+  },
+  "keywords": [
+    "claude",
+    "claude code",
+    "accounts",
+    "profiles",
+    "multi account",
+    "credentials",
+    "anthropic",
+    "billing",
+    "clients",
+    "terminal"
+  ],
+  "icon": "resources/icon.png",
+  "homepage": "https://github.com/VaniaRensi/claudes#readme",
+  "bugs": {
+    "url": "https://github.com/VaniaRensi/claudes/issues"
+  },
+  "qna": false,
+  "galleryBanner": {
+    "color": "#1E1E1E",
+    "theme": "dark"
+  },
+  "extensionKind": [
+    "ui"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Accounts and credentials are read from your home folder, and the command that runs is an application-scoped setting a workspace cannot override."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "ClaudeS runs the Claude Code CLI in a local terminal, so it needs a real filesystem."
+    }
+  }
+}

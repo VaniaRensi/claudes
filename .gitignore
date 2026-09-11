@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+
+# Written by ClaudeS itself when it colours this window
+.vscode/settings.json

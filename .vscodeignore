@@ -1,0 +1,30 @@
+# Working notes, not documentation for people installing this.
+# CLAUDE.md, HANDOFF.md and RIPRISTINO.md are written for whoever is developing
+# the extension: they name what broke on which day, carry paths from this
+# machine, and record decisions mid-argument. Shipping them puts internal notes
+# on a public page and helps nobody install anything.
+CLAUDE.md
+HANDOFF.md
+RIPRISTINO.md
+PRIMA-DI-PUBBLICARE.md
+
+# Sources and build config: the packaged extension runs dist/.
+src/**
+tsconfig.json
+.gitignore
+.vscodeignore
+node_modules/**
+**/*.map
+**/*.ts
+
+# Screenshots live in the README by URL, so the files themselves need not ship.
+docs/**
+
+# Safety tests, run before publishing, not by the extension.
+scripts/**
+
+# Never package a build of ourselves.
+*.vsix
+
+# Editor config for developing this, not for running it.
+.vscode/**

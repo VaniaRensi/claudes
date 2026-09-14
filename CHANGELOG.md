@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.2.1] — 2026-09-14
+
+A privacy and safety release. Please update.
+
+- **No trace of a conversation crosses between accounts any more.** Bringing a
+  project's settings into an account also copied what Claude Code records about
+  the last conversation in that folder — its first message, its cost and token
+  counts — from your main Claude Code installation into every account. Only
+  settings are copied now (whether you trust the folder, the tools you allowed,
+  its MCP servers). The next time you open a terminal on an account from the
+  panel, whatever was copied into it before is removed. The account's own
+  conversations are untouched.
+- **Claude Code no longer asks again to trust a folder you already trusted.**
+  Windows can spell one folder several ways (`c:/Work`, `C:/Work`, `C:\Work`);
+  ClaudeS merged them and sometimes kept a spelling Claude Code did not look
+  for. Every spelling is kept now, and trusted if any one of them is.
+- **A terminal is always tied to its own account.** With names hidden, tabs
+  read "Account 1, 2, 3" — positions that shift when an account is deleted.
+  Closing or reopening terminals went by that name, so the x on one account
+  could close another account's terminal. Terminals are now recognised by the
+  account folder they run on.
+- **An API key or token in your environment can no longer make every account
+  bill it.** Claude Code prefers such a credential to the account's login.
+  ClaudeS removes them from its terminals, and warns if one is written in the
+  Claude Code settings your accounts read.
+- **The eye hides names in its own window only.** It used to flip a setting
+  every VS Code window shares, and each window then offered to reopen its
+  terminals: one click could restart conversations in every project you had
+  open. The `claudes.anonymiseAccounts` setting still hides them everywhere.
+- **ClaudeS no longer copies your Claude Code login on first start.** A copy
+  is a second holder of the same sign-in, and whether renewing one can sign
+  the other out could not be ruled out. You add each account and sign in to it
+  yourself, once.
+- **Removed "Reload the Account List"** and the last reading of the account
+  list that development versions kept in `settings.json`. It could quietly
+  point accounts back at folders abandoned long ago.
+- Removed the leftover "Restore the Window Layout" command, which only focused
+  the terminal.
+- The README and the Marketplace description now say precisely what is kept
+  apart, what is shared, and what is written where.
+
 ## [0.2.0] — 2026-09-11
 
 The first public release. This describes what the extension does, rather than

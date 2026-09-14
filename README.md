@@ -1,28 +1,28 @@
 # ClaudeS — Accounts Manager
 
-![version](https://img.shields.io/badge/version-0.2.0-blue)
+![version](https://img.shields.io/badge/version-0.2.1-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.93+-blueviolet)
-![writes](https://img.shields.io/badge/your%20Claude%20Code%20folder-never%20written-brightgreen)
+![conversations](https://img.shields.io/badge/conversations-never%20shared%20between%20accounts-brightgreen)
 
 Keep several Claude Code accounts side by side, and open a terminal on any of
 them with one click.
 
 If you work for more than one client, each with their own Claude subscription,
-this stops one client's work from spending another's credits — and stops the
-logouts you get when a single account is signed in on too many machines.
+this stops one client's work from spending another's credits, and keeps each
+client's conversations in that client's account.
 
 ![The accounts panel: three accounts, each with a + and a count of its open terminals, the hovered one showing x](https://raw.githubusercontent.com/VaniaRensi/claudes/master/docs/accounts-panel.png)
 
 ## The first time you open it
 
-If you are signed in to Claude Code, ClaudeS copies that login into an account
-of its own and you are ready to work. Nothing is asked, because there is only
-one sensible answer, and nothing is taken away: **your Claude Code installation
-is read, never written.** It keeps its own login and is exactly as it was if you
-uninstall this.
+The panel is empty and offers **Add an account**. Give the account a name — the
+client's, or "Personal" — and a terminal opens where you sign in to it, once.
+Add the other accounts the same way.
 
-From there you add the other accounts yourself.
+ClaudeS never copies a login: each account is signed in by you, in its own
+folder. Your existing Claude Code keeps its own login, and ClaudeS never writes
+to it.
 
 ## What it does
 
@@ -75,10 +75,14 @@ since they carry the name.
 
 The colours stay, so your own rows are still easy to tell apart.
 
+The eye acts on **its own window only**: other VS Code windows keep showing
+what they showed, and their terminals are left alone. To hide the names in
+every window at once, turn on the `claudes.anonymiseAccounts` setting; while it
+is on, no window can show them.
+
 A terminal tab keeps the name it was opened with, so if terminals are already
-open when you hide the names, ClaudeS asks whether to reopen them under the new
-ones. Reopening starts `claude` again on the same accounts; the conversations
-stay on disk.
+open in the window when you hide the names, ClaudeS asks whether to reopen them
+under the new ones. Reopening resumes each conversation on the same account.
 
 ![One account's page: names and addresses hidden, the environment shared, the folder read-only](https://raw.githubusercontent.com/VaniaRensi/claudes/master/docs/account-page.png)
 
@@ -104,7 +108,7 @@ ClaudeS gives each account its own folder under `~/.claudes` — **beside** your
 Claude Code configuration, never inside it — and sets that variable on the
 terminals it opens.
 
-### Only the login is separate
+### Your setup is shared; your logins and conversations are not
 
 Your settings, skills, plugins and MCP servers are shared across every account,
 by link rather than by copy. Configure them once and every account has them: if
@@ -141,10 +145,37 @@ This is how Claude Code keeps these answers, and ClaudeS cannot share them
 without sharing the login too — which would defeat the point of separate
 accounts.
 
-### Your Claude Code installation is not touched
+### What never crosses from one account to another
 
-It is read when an account is created, to copy a login, and never written to.
-Uninstall ClaudeS and it is as it was — still signed in, still yours.
+The accounts are meant for different companies, so the rule is that **nothing
+anyone said crosses over**:
+
+- **Kept apart:** the login, every conversation and its history, Claude's
+  memory, the list of running sessions (a Claude on one account cannot find or
+  message a Claude on another), and each sign-in to an MCP server.
+- **Copied from your main Claude Code setup into each account:** a project
+  folder's *settings* only — whether you trust it, the tools you allowed there,
+  which MCP servers it uses. Never what a conversation in it said: not its
+  first message, not its cost.
+- **Shared by link** (unless you give an account its own setup): your
+  `settings.json`, skills and plugins. They are the same files for every
+  account, so **whatever you write in them reaches every account's
+  sessions**. Keep one client's confidential material out of a shared skill
+  or a permission rule: put it in that client's project folder, or give that
+  account a setup of its own.
+- **Not ClaudeS's to separate:** a project folder's own files (`CLAUDE.md`,
+  `.claude/`, `.mcp.json`). Any account opened in that folder reads them.
+- **A credential that outranks the login:** Claude Code uses an API key or
+  token in the environment ahead of the account's login. ClaudeS removes those
+  from its terminals, and warns if one is written in the settings the accounts
+  read.
+
+### Your Claude Code installation
+
+ClaudeS reads it and never writes to it, and never copies its login. Claude Code
+does write to the shared settings, skills and plugins in it
+when you change them from any account — they are the same files. Uninstall
+ClaudeS and your installation is still signed in, still yours.
 
 ## Requirements
 
@@ -172,7 +203,7 @@ your machine.
 |---|---|---|
 | Your accounts' logins and chat history | `~/.claudes/<account>/` | **Kept.** These are your credentials, and deleting them without asking would sign you out of every client at once. Delete the folder yourself when you want them gone. |
 | The list of accounts, their names and colours | VS Code's own extension storage | Removed by VS Code with the extension. |
-| Your Claude Code installation | `~/.claude` and `~/.claude.json` | **Untouched throughout.** It is read when an account is created, to copy a login, and never written to. |
+| Your Claude Code installation | `~/.claude` and `~/.claude.json` | **Never written by ClaudeS**, and its login is never copied. Claude Code writes to the shared settings, skills and plugins in it when you change them from any account. |
 | Settings, skills, plugins, MCP servers | your main Claude Code folder | Shared with each account by link, so there is one copy and it is yours. Removing the links leaves the originals. |
 
 To see the actual paths on this machine, with what is in each one, run

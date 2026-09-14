@@ -4,11 +4,12 @@ import * as path from 'path';
 /**
  * Sharing a working environment between accounts.
  *
- * Only credentials make two accounts different in the way that matters: who
- * pays. Everything else in a config folder — permissions granted over months,
- * MCP servers, skills, plugins, project history — is the user's working setup,
- * and a switch that silently drops it turns "bill this client" into "start from
- * nothing", which is not what anyone asked for.
+ * Two things make accounts different: who pays, and what was said. The login
+ * and every conversation — transcripts, history, memory, running sessions —
+ * stay in each account's folder and never cross; the accounts belong to
+ * different companies. The working setup — permissions granted over months,
+ * MCP servers, skills, plugins — is the user's configuration, and a switch that
+ * silently dropped it would turn "bill this client" into "start from nothing".
  *
  * So these entries are linked to the main installation rather than left empty.
  * The credentials file is deliberately not among them: sharing that would undo
@@ -21,9 +22,6 @@ export const SHAREABLE = [
   'mcp-needs-auth-cache.json',
   'CLAUDE.md'
 ] as const;
-
-/** Never shared: these are what make an account a separate account. */
-export const NEVER_SHARED = ['.credentials.json', '.claude.json', 'sessions', 'projects', 'history.jsonl'];
 
 export interface ShareResult {
   linked: string[];
@@ -159,10 +157,11 @@ export function syncProjectSettings(mainConfigDir: string, profileDir: string): 
   const source = projectFile(mainConfigDir);
   const target = projectFile(profileDir);
 
-  if (!fs.existsSync(source)) return { projects: 0, mcpServers: 0 };
-
   try {
-    const from = JSON.parse(fs.readFileSync(source, 'utf8')) as Record<string, unknown>;
+    // No main file means nothing to copy, not nothing to clean.
+    const from = fs.existsSync(source)
+      ? (JSON.parse(fs.readFileSync(source, 'utf8')) as Record<string, unknown>)
+      : {};
 
     // Read last, not earlier: this is the copy the write is built on, so it has
     // to be the newest one on disk.
@@ -172,10 +171,19 @@ export function syncProjectSettings(mainConfigDir: string, profileDir: string): 
 
     let changed = false;
     for (const key of SHAREABLE_JSON_KEYS) {
-      if (from[key] === undefined) continue;
+      // Projects are gone through even when the main installation lists none:
+      // cleaning out conversations that are not this account's is not
+      // conditional on there being anything to copy.
+      if (from[key] === undefined && (key !== 'projects' || to[key] === undefined)) continue;
       const next =
         key === 'projects'
-          ? mergeProjectPaths(combineProjects(from[key] as ProjectMap, (to[key] as ProjectMap) ?? {}))
+          ? alignSpellings(
+              combineProjects(
+                (from[key] as ProjectMap) ?? {},
+                (to[key] as ProjectMap) ?? {},
+                conversationsIn(profileDir)
+              )
+            )
           : { ...((to[key] as object) ?? {}), ...(from[key] as object) };
       if (JSON.stringify(to[key]) !== JSON.stringify(next)) {
         to[key] = next;
@@ -253,110 +261,137 @@ type ProjectMap = Record<string, Record<string, unknown>>;
  * list, so every sync erased it: Claude Code asked to trust the folder again
  * each time a terminal opened, and forgot the permissions granted there.
  *
- * Now each project keeps what the account recorded, and gains only what the
- * main installation knows and the account does not. Two exceptions, both so the
- * main installation can still hand something on: MCP servers are pooled rather
- * than one list replacing the other, and a folder trusted in either place counts
- * as trusted — it is the same person answering the same question.
+ * Now each project keeps what the account recorded, and gains only the
+ * main installation's settings the account does not have. Two exceptions, both
+ * so the main installation can still hand something on: MCP servers are pooled
+ * rather than one list replacing the other, and a folder trusted in either
+ * place counts as trusted — it is the same person answering the same question.
+ *
+ * Only settings travel. A project entry also describes the last conversation
+ * held in that folder — its first prompt, its id, its cost and tokens — and
+ * copying whole entries put one company's prompt into another company's
+ * account. What the account holds about a conversation that is not its own is
+ * removed here as well, which also cleans what earlier versions copied.
  */
-function combineProjects(main: ProjectMap, account: ProjectMap): ProjectMap {
-  const combined: ProjectMap = { ...account };
+function combineProjects(main: ProjectMap, account: ProjectMap, ownConversations: Set<string>): ProjectMap {
+  const combined: ProjectMap = {};
+  for (const [key, entry] of Object.entries(account)) {
+    combined[key] = withoutForeignConversation(entry, ownConversations);
+  }
   for (const [key, fromMain] of Object.entries(main)) {
-    const own = account[key];
+    const shared = settingsOf(fromMain);
+    const own = combined[key];
     if (!own) {
-      combined[key] = fromMain;
+      combined[key] = shared;
       continue;
     }
-    const entry: Record<string, unknown> = { ...fromMain, ...own };
-    if (fromMain.mcpServers || own.mcpServers) {
-      entry.mcpServers = { ...((fromMain.mcpServers as object) ?? {}), ...((own.mcpServers as object) ?? {}) };
+    const entry: Record<string, unknown> = { ...shared, ...own };
+    if (shared.mcpServers || own.mcpServers) {
+      entry.mcpServers = { ...((shared.mcpServers as object) ?? {}), ...((own.mcpServers as object) ?? {}) };
     }
-    if (fromMain.hasTrustDialogAccepted === true) entry.hasTrustDialogAccepted = true;
+    if (shared.hasTrustDialogAccepted === true) entry.hasTrustDialogAccepted = true;
     combined[key] = entry;
   }
   return combined;
 }
 
 /**
- * Merges project entries that differ only by the case of the drive letter.
- *
- * Windows treats "c:/Work" and "C:/Work" as the same folder; Claude Code stores
- * them as two projects, each with its own MCP state. Opening the folder then
- * lands on whichever spelling VS Code used, which may be the half with no MCP
- * servers connected — the tools look configured and simply do not appear.
- *
- * This is not something ClaudeS causes, but it does copy these entries between
- * accounts, and copying a split project would spread the problem. The variants
- * are folded together, later keys winning, so each folder appears once.
+ * The keys of a project entry that are settings: what the user allowed, which
+ * MCP servers the folder uses, whether the folder is trusted. Everything else
+ * in an entry — `lastSessionId`, `lastSessionFirstPrompt`, `lastCost`, token
+ * counts — describes a conversation, and a conversation belongs to the account
+ * that had it. A key Claude Code adds in future stays behind until it is
+ * listed here: unknown is treated as content.
  */
-function mergeProjectPaths(projects: ProjectMap): ProjectMap {
-  const byNormalised = new Map<string, { key: string; value: Record<string, unknown> }>();
+const PROJECT_SETTING_KEYS = [
+  'allowedTools',
+  'mcpServers',
+  'enabledMcpjsonServers',
+  'disabledMcpjsonServers',
+  'mcpContextUris',
+  'hasTrustDialogAccepted',
+  'hasClaudeMdExternalIncludesApproved',
+  'hasClaudeMdExternalIncludesWarningShown'
+];
 
-  for (const [key, value] of Object.entries(projects)) {
-    const normalised = key.split('\\').join('/').toLowerCase();
-    const existing = byNormalised.get(normalised);
-
-    if (!existing) {
-      byNormalised.set(normalised, { key, value });
-      continue;
-    }
-
-    // Same folder, two spellings: combine them rather than letting one win and
-    // silently drop the other's servers. The entry the user has actually
-    // trusted supplies the surviving key — Claude Code will not load MCP
-    // servers for a project whose trust dialog was never accepted, so keeping
-    // the untrusted spelling would merge the servers and still not start them.
-    const merged = { ...existing.value, ...value };
-    const keep = value.hasTrustDialogAccepted === true ? key : existing.key;
-    byNormalised.set(normalised, { key: keep, value: merged });
+function settingsOf(entry: Record<string, unknown>): Record<string, unknown> {
+  const settings: Record<string, unknown> = {};
+  for (const key of PROJECT_SETTING_KEYS) {
+    if (entry[key] !== undefined) settings[key] = entry[key];
   }
-
-  const merged: ProjectMap = {};
-  for (const { key, value } of byNormalised.values()) merged[key] = value;
-  return merged;
+  return settings;
 }
 
 /**
- * Copies a login out of one config folder into a new account of ours.
+ * An entry without what it says about a conversation this account never had.
  *
- * Only the credentials travel. The working environment — settings, skills,
- * plugins, MCP servers — is shared by link afterwards, so it stays one setup
- * rather than becoming a copy that drifts; and the conversation history stays
- * where it is, because an account created to bill a client has no business
- * holding someone else's transcripts.
- *
- * Copied, never moved, and the source is opened read-only. Claude Code's own
- * folder must be exactly as it was when ClaudeS is uninstalled: it is another
- * program's data, and the user is still signed in to it. Nothing here writes to
- * the source at all.
+ * The conversation is the account's own when its transcript is in the
+ * account's folder. The `last…` keys are statistics Claude Code records when a
+ * session ends; losing one for a conversation of ours whose transcript has
+ * since been cleaned up costs nothing.
  */
-export function cloneLogin(fromConfigDir: string, toConfigDir: string): { copied: string[] } {
-  const copied: string[] = [];
+function withoutForeignConversation(entry: Record<string, unknown>, own: Set<string>): Record<string, unknown> {
+  const id = entry.lastSessionId;
+  if (typeof id === 'string' && own.has(id)) return entry;
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(entry)) {
+    if (!/^last[A-Z]/.test(key)) clean[key] = value;
+  }
+  return clean;
+}
 
-  // Never over another login. Whatever is already there belongs to some
-  // account, and a login overwritten is one the user has to sign in to again.
-  if (fs.existsSync(path.join(toConfigDir, '.credentials.json'))) {
-    throw new Error(`${toConfigDir} already holds a login, so it was not overwritten.`);
+/** The conversations this account has a transcript of. */
+export function conversationsIn(configDir: string): Set<string> {
+  const ids = new Set<string>();
+  const projects = path.join(configDir, 'projects');
+  let folders: string[] = [];
+  try {
+    folders = fs.readdirSync(projects);
+  } catch {
+    return ids;
+  }
+  for (const folder of folders) {
+    try {
+      for (const file of fs.readdirSync(path.join(projects, folder))) {
+        if (file.endsWith('.jsonl')) ids.add(file.slice(0, -'.jsonl'.length));
+      }
+    } catch {
+      // Not a folder, or unreadable: nothing of ours to find in it.
+    }
+  }
+  return ids;
+}
+
+/**
+ * Gives every spelling of one folder the same trust and MCP servers, and keeps
+ * every spelling.
+ *
+ * Windows treats "c:/Work", "C:/Work" and "C:\Work" as one folder; Claude Code
+ * keeps an entry per spelling and looks up the exact one it was started with.
+ * These used to be merged into one entry, and the spelling kept was not always
+ * the one Claude Code looked for next — it found no entry and asked to trust
+ * the folder again. Now none is removed: a trust answer or a server given to
+ * one spelling is given to all. Only settings are aligned; what an entry says
+ * about its own last conversation stays with that entry.
+ */
+function alignSpellings(projects: ProjectMap): ProjectMap {
+  const groups = new Map<string, string[]>();
+  for (const key of Object.keys(projects)) {
+    const normalised = key.split('\\').join('/').toLowerCase();
+    groups.set(normalised, [...(groups.get(normalised) ?? []), key]);
   }
 
-  fs.mkdirSync(toConfigDir, { recursive: true });
-
-  // `.credentials.json` is the login. `.claude.json` carries the account
-  // identity beside per-project settings, so it comes too — the projects list
-  // in it is harmless, and without it Claude Code treats the folder as a fresh
-  // install and asks its onboarding questions again.
-  for (const entry of ['.credentials.json', '.claude.json']) {
-    const source = path.join(fromConfigDir, entry);
-    if (!fs.existsSync(source)) continue;
-
-    const target = path.join(toConfigDir, entry);
-    // Through a temporary name, so an interrupted copy cannot leave a
-    // half-written credentials file that reads as a corrupt login.
-    const tmp = `${target}.claudes-tmp`;
-    fs.copyFileSync(source, tmp);
-    fs.renameSync(tmp, target);
-    copied.push(entry);
+  const aligned: ProjectMap = { ...projects };
+  for (const keys of groups.values()) {
+    if (keys.length < 2) continue;
+    const trusted = keys.some((k) => projects[k].hasTrustDialogAccepted === true);
+    const servers = Object.assign({}, ...keys.map((k) => (projects[k].mcpServers as object) ?? {}));
+    for (const key of keys) {
+      const entry = { ...projects[key] };
+      if (trusted) entry.hasTrustDialogAccepted = true;
+      if (Object.keys(servers).length > 0) entry.mcpServers = servers;
+      aligned[key] = entry;
+    }
   }
-
-  return { copied };
+  return aligned;
 }

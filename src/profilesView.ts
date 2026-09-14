@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { ClaudeProfile, getProfiles, getActiveProfileId } from './profiles';
-import { TERMINAL_NAME_PREFIX } from './terminal';
+import { ClaudeProfile, getProfiles, isAnonymising } from './profiles';
+import { terminalsOnProfile } from './terminal';
 import { readIdentity, AccountIdentity } from './identity';
 import { detectClaudeInstallation } from './discovery';
 import { isSharing } from './sharing';
@@ -20,7 +20,7 @@ import * as path from 'path';
  * their own rows apart while the names are hidden.
  */
 function anonymising(): boolean {
-  return vscode.workspace.getConfiguration('claudes').get<boolean>('anonymiseAccounts', false);
+  return isAnonymising();
 }
 
 /**
@@ -111,22 +111,11 @@ function isMainInstallation(configDir: string): boolean {
 /**
  * How many ClaudeS terminals are running on this account right now.
  *
- * Terminals are named for the account they were created with and keep it for
- * life, so their names are the honest answer to "what is running". The stored
- * active profile only records the last row clicked, which since accounts began
- * sitting side by side is no longer the same question.
+ * Counted by the account folder each terminal carries, not by tab name: a
+ * hidden name is a position in the list, and shifts when the list changes.
  */
 function terminalCountFor(profile: ClaudeProfile): number {
-  // Both spellings, for the same reason the closing code matches both: a
-  // terminal keeps the name it was created with, so after the anonymising
-  // setting is toggled a running terminal still carries the old one. Counting
-  // only one form would show an account as not running while it is.
-  const index = getProfiles().findIndex((p) => p.id === profile.id);
-  const names = new Set([
-    `${TERMINAL_NAME_PREFIX}: ${profile.name}`,
-    `${TERMINAL_NAME_PREFIX}: Account ${index >= 0 ? index + 1 : '?'}`
-  ]);
-  return vscode.window.terminals.filter((t) => names.has(t.name)).length;
+  return terminalsOnProfile(profile).length;
 }
 
 /** Level 1 and 2: one account in the list. */
@@ -301,7 +290,6 @@ export class ProfilesProvider implements vscode.TreeDataProvider<Row> {
       return this.accountPage();
     }
 
-    const activeId = getActiveProfileId();
     const profiles = getProfiles();
     const identities = await Promise.all(profiles.map((p) => readIdentity(p.configDir)));
 

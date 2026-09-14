@@ -1,8 +1,8 @@
 {
   "name": "claudes",
   "displayName": "ClaudeS - Accounts Manager",
-  "description": "Keep several Claude Code accounts side by side and open a terminal on any of them with one click. Only the login is separate — your settings, skills and MCP servers stay shared — and your Claude Code installation is never written to. Independent project, not affiliated with Anthropic.",
-  "version": "0.2.0",
+  "description": "Keep several Claude Code accounts side by side and open a terminal on any of them with one click. Conversations, history and logins never cross between accounts; your settings, skills and MCP servers stay shared, and ClaudeS never writes to your Claude Code installation. Independent project, not affiliated with Anthropic.",
+  "version": "0.2.1",
   "publisher": "VeleaWebVR",
   "engines": {
     "vscode": "^1.93.0"
@@ -51,11 +51,6 @@
       {
         "command": "claudes.focusTerminal",
         "title": "Focus the ClaudeS Terminal",
-        "category": "ClaudeS"
-      },
-      {
-        "command": "claudes.restoreLayout",
-        "title": "Restore the Window Layout",
         "category": "ClaudeS"
       },
       {
@@ -143,11 +138,6 @@
         "category": "ClaudeS"
       },
       {
-        "command": "claudes.reloadAccounts",
-        "title": "Reload the Account List",
-        "category": "ClaudeS"
-      },
-      {
         "command": "claudes.signIn",
         "title": "Sign In to an Account",
         "category": "ClaudeS"
@@ -181,7 +171,7 @@
         "claudes.anonymiseAccounts": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Hide who these accounts belong to.\n\nAccounts are listed as **Account 1**, **Account 2**, ... and signed-in addresses are masked as `o****@l****.com` — enough shape to recognise your own, not enough for anyone else. Folder paths are hidden too, since they carry the name.\n\nFor sharing a screen, presenting, or taking screenshots. Colours stay as they are: they identify a row to you and reveal nothing.\n\nTerminals already open keep the name they were created with.",
+          "markdownDescription": "Hide who these accounts belong to, **in every window**. The eye at the top of the ClaudeS panel does the same for its own window only; while this setting is on, no window can show the names.\n\nAccounts are listed as **Account 1**, **Account 2**, ... and signed-in addresses are masked as `o****@l****.com` — enough shape to recognise your own, not enough for anyone else. Folder paths are hidden too, since they carry the name.\n\nFor sharing a screen, presenting, or taking screenshots. Colours stay as they are: they identify a row to you and reveal nothing.\n\nTerminals already open keep the name they were created with.",
           "scope": "application"
         },
         "claudes.autoStartClaude": {
@@ -215,7 +205,7 @@
             "Ask each time a new account is created.",
             "Never share. Every account starts with a clean environment."
           ],
-          "markdownDescription": "Permissions, MCP servers, skills and plugins live **inside each account folder**, so a brand new account starts without any of them — and every command asks for confirmation again.\n\nThis setting decides what happens when you create an account.\n\n**Always** (default): the new account is linked to your main setup. Only the login differs, so switching account changes who pays and nothing else.\n\n**Ask**: choose per account. Useful when some clients have their own MCP servers and rules and others do not.\n\n**Never**: every account is a clean, fully separate environment.\n\nCredentials and chat history are *never* shared, whatever this is set to.",
+          "markdownDescription": "Permissions, MCP servers, skills and plugins live **inside each account folder**, so a brand new account starts without any of them — and every command asks for confirmation again.\n\nThis setting decides what happens when you create an account.\n\n**Always** (default): the new account is linked to your main setup. Its login and its conversations stay its own. Anything you put in the shared settings, skills or plugins reaches every account that shares them.\n\n**Ask**: choose per account. Useful when some clients have their own MCP servers and rules and others do not.\n\n**Never**: every account is a clean, fully separate environment.\n\nCredentials and chat history are *never* shared, whatever this is set to.",
           "scope": "application"
         }
       }
@@ -232,7 +222,7 @@
     "viewsWelcome": [
       {
         "view": "claudes.profiles",
-        "contents": "No accounts yet.\n\nEach account is one Claude login with a folder of its own. Add one, sign in to it once, and from then on its + opens a terminal on it.\n\n[Add an Account](command:claudes.newProfile)\n\nIf Claude Code is signed in on this computer when ClaudeS first starts, that account is added for you.\n\n\n\nQuestions or problems? We recommend asking Claude first: the answer is usually in the documentation.\n\n[Copy the Documentation for Claude](command:claudes.copyDocsForClaude)\n\nPaste it into Claude and add your question. It is always in the … menu above, too."
+        "contents": "No accounts yet.\n\nEach account is one Claude login with a folder of its own. Add one, sign in to it once, and from then on its + opens a terminal on it.\n\n[Add an Account](command:claudes.newProfile)\n\n\n\nQuestions or problems? We recommend asking Claude first: the answer is usually in the documentation.\n\n[Copy the Documentation for Claude](command:claudes.copyDocsForClaude)\n\nPaste it into Claude and add your question. It is always in the … menu above, too."
       }
     ],
     "views": {

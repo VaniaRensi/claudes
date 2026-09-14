@@ -11,11 +11,14 @@ import {
   renameProfile,
   validateProfileName,
   initStorage,
-  resetStoredAccounts,
+  initWindowPrivacy,
+  isAnonymising,
+  hiddenEverywhere,
+  setHiddenInThisWindow,
   forgetAssociationsFor,
   setProfileColor
 } from './profiles';
-import { detectClaudeInstallation } from './discovery';
+import { detectClaudeInstallation, overridingCredentialsIn } from './discovery';
 import { checkSafeToDelete, deleteConfigFolder } from './deletion';
 import {
   ProfilesProvider,
@@ -38,7 +41,6 @@ import {
   closeTerminalsForProfileAndWait,
   signInToProfile,
   focusOnClaudeTerminal,
-  restoreWindowLayout,
   setTerminalLog,
   terminalsWithStaleNames,
   reopenTerminalsWithCurrentNames,
@@ -52,12 +54,9 @@ import {
   unshareSettings,
   isSharing,
   syncProjectSettings,
-  cloneLogin,
   liveProjectFileFor
 } from './sharing';
 import { readIdentity, invalidateIdentity, runAuthLogout, silenceIdentity } from './identity';
-
-let storage: vscode.Memento | undefined;
 
 let log: vscode.OutputChannel;
 let profilesProvider: ProfilesProvider | undefined;
@@ -161,8 +160,8 @@ export function activate(context: vscode.ExtensionContext): void {
   setTerminalLog(log);
 
   try {
-    storage = context.globalState;
     initStorage(context.globalState);
+    initWindowPrivacy(context.workspaceState);
     pendingState = context.globalState;
     // Leftovers of accounts deleted while a program still held their files.
     void finishPendingDeletions();
@@ -221,18 +220,6 @@ export function activate(context: vscode.ExtensionContext): void {
           if (choice === 'Create Profile') await newProfileCommand();
         }
       }),
-      // Repairs a list that has gone wrong — an account pointing at a folder
-      // that has since moved. Clears the stored copy and reads it again from
-      // settings.json; no folder and no credential is touched.
-      command('claudes.reloadAccounts', async () => {
-        await resetStoredAccounts();
-        initStorage(context.globalState);
-        invalidateIdentity();
-        profilesProvider?.refresh();
-        vscode.window.showInformationMessage(
-          `Accounts reloaded: ${getProfiles().length} found.`
-        );
-      }),
       command('claudes.signIn', signInCommand),
       command('claudes.signOut', signOutCommand),
       command('claudes.toggleSharing', toggleSharingCommand),
@@ -245,7 +232,6 @@ export function activate(context: vscode.ExtensionContext): void {
       // different entry rather than a different icon on the same one.
       command('claudes.toggleAnonymiseOff', toggleAnonymiseCommand),
       command('claudes.focusTerminal', focusOnClaudeTerminal),
-      command('claudes.restoreLayout', restoreWindowLayout),
       command('claudes.openSettings', () =>
         vscode.commands.executeCommand('workbench.action.openSettings', '@ext:VeleaWebVR.claudes')
       ),
@@ -291,33 +277,14 @@ export function activate(context: vscode.ExtensionContext): void {
           profilesProvider?.refresh();
         }
 
-        // Reached from the settings UI as well as from the command, and the
-        // tabs are stale either way, so the offer to reopen cannot live only in
-        // the command. The command sets a flag while it runs its own prompt, so
-        // toggling from the panel asks once rather than twice.
-        //
-        // The setting is shared by every open window, so every window hears
-        // this. Only the one the user is looking at asks now; the others ask
-        // when the user comes back to them, since their tabs are just as stale.
-        // Asking in all of them at once put a dialog in a window nobody was
-        // looking at, about terminals the user had not been thinking of.
+        // The setting hides names in every window, and every window hears it
+        // change. Only the window where it was changed offers to reopen its
+        // terminals. The others are never asked, now or later: a question
+        // waiting in each window reopened terminals — and the conversations in
+        // them — across every project the user had open.
         if (e.affectsConfiguration('claudes.anonymiseAccounts')) {
           void syncAnonymisingContext();
-          if (!promptingForStaleTerminals) {
-            if (vscode.window.state.focused) {
-              void offerToReopenStaleTerminals();
-            } else {
-              staleTerminalQuestionWaiting = true;
-            }
-          }
-        }
-      }),
-      vscode.window.onDidChangeWindowState((state) => {
-        if (state.focused && staleTerminalQuestionWaiting) {
-          staleTerminalQuestionWaiting = false;
-          // Worked out afresh: if the setting was turned back while this
-          // window was in the background, nothing is stale and nothing is asked.
-          void offerToReopenStaleTerminals();
+          if (vscode.window.state.focused) void offerToReopenStaleTerminals();
         }
       })
     );
@@ -359,7 +326,7 @@ export function activate(context: vscode.ExtensionContext): void {
       })
     );
 
-    void offerExistingAccount(context);
+    warnAboutOverridingCredentials();
 
     // The conversations that were open when VS Code last closed or crashed.
     reopenRememberedSessions()
@@ -414,9 +381,7 @@ async function switchAccountCommand(): Promise<void> {
     return;
   }
 
-  const profile = picked.profile!;
-  await setActiveProfileId(profile.id);
-  await openTerminalForProfile(profile);
+  await switchToProfileCommand(picked.profile!);
 
   // A project used to be remembered as belonging to one account, and opening a
   // terminal on another one asked about it. That made sense while the panel was
@@ -448,8 +413,7 @@ async function newProfileCommand(): Promise<void> {
     `Profile "${profile.name}" created. A terminal will open so you can log in with "claude" for the first time (e.g. via the OTP flow).`
   );
 
-  await setActiveProfileId(profile.id);
-  await openTerminalForProfile(profile);
+  await switchToProfileCommand(profile);
 }
 
 /**
@@ -483,7 +447,7 @@ async function askAboutSharing(profile: ClaudeProfile): Promise<void> {
         {
           label: '$(link) Share my setup',
           detail:
-            'Same permissions, MCP servers, skills and plugins as your main account. Only the login differs — this account just bills someone else.',
+            'Same permissions, MCP servers, skills and plugins as your main account. Its login and its conversations stay its own.',
           share: true
         },
         {
@@ -571,102 +535,33 @@ async function openConfigFolderCommand(): Promise<void> {
   await vscode.commands.executeCommand('revealFileInOS', uri);
 }
 
-// --- Startup check -------------------------------------------------------------------------
-
 /**
- * Tells the user which account this window is using, and warns when it is not
- * the one the project belongs to.
+ * Says so when a settings file would make accounts bill a credential other
+ * than their own login.
  *
- * One window means one account: VS Code applies the environment to the window's
- * terminals, so switching folders inside a window cannot switch account. Opening
- * each project in its own window is what makes the indicator trustworthy.
+ * Claude Code puts an `apiKeyHelper`, or an API key or token in `env`, ahead
+ * of the login in the account's folder. With a shared setup that one file
+ * speaks for every account: each tab would name a different company while all
+ * of them spend the same key. The terminals' own environment is cleaned when
+ * they open; a settings file is the user's, so this only reports it.
  */
-/**
- * Offers to adopt the account Claude Code is already signed in to.
- *
- * Whoever installs this is already using Claude Code, with an account in
- * ~/.claude that spends real money. Left out of the list, that account is
- * invisible here while still being the one in use — the panel would be quietly
- * incomplete, which is the very failure this extension exists to prevent.
- *
- * It offers rather than adopts: an account that appeared on its own, already
- * active, would break the rule that nothing here becomes active without being
- * chosen.
- */
-async function offerExistingAccount(context: vscode.ExtensionContext): Promise<void> {
-  const DONE = 'clonedFirstAccount';
-  if (context.globalState.get<boolean>(DONE)) return;
-
-  // Only ever on an empty list. Once the user has accounts of their own, this
-  // has nothing to add and must not surprise them by creating one.
-  if (getProfiles().length > 0) return;
-
-  const installation = detectClaudeInstallation();
-  if (!installation.exists || !installation.hasCredentials) return;
-
-  const identity = await readIdentity(installation.configDir);
-  if (!identity.loggedIn) return;
-
-  // Done without asking. The question this used to put — "you are signed in to
-  // Claude Code, add it here?" — had one sensible answer: the user installed an
-  // extension for managing Claude accounts while signed in to one, so that is
-  // the account they mean. And with no accounts at all the panel is an empty
-  // list beside a program that cannot do anything, which is a worse first
-  // impression than a decision made for them.
-  //
-  // It is safe to decide because it takes nothing away: the login is copied,
-  // Claude Code keeps its own, and the result is one account that works.
-  const who = identity.email ?? 'your account';
-  const name = identity.email?.split('@')[0]?.replace(/[^a-zA-Z0-9 _.-]/g, '-') || 'Personal';
-
-  try {
-    const profile = await createProfile(name);
-
-    try {
-      const { copied } = cloneLogin(installation.configDir, profile.configDir);
-      if (copied.length === 0) throw new Error('No login file was found to copy.');
-    } catch (err) {
-      await deleteProfile(profile.id);
-      throw err;
-    }
-
-    // Settings, skills, plugins and MCP servers are shared by link, so the
-    // environment stays one setup rather than a copy that drifts. Only the
-    // login is per-account.
-    // Read as the three-value setting it is. It was read as a boolean here,
-    // and "never" is a non-empty string: the one account created without
-    // asking shared the setup even when the user had said never to.
-    const shareMode = vscode.workspace
-      .getConfiguration('claudes')
-      .get<'always' | 'never' | 'ask'>('shareSetupWithNewAccounts', 'always');
-    if (shareMode !== 'never') {
-      shareSettings(installation.configDir, profile.configDir);
-    }
-
-    await context.globalState.update(DONE, true);
-    invalidateIdentity();
-    profilesProvider?.refresh();
-
-    log.appendLine(`First run: created account "${name}" from the existing login (${who}).`);
-    vscode.window.showInformationMessage(
-      `ClaudeS is set up with your account, ${who}. Your Claude Code installation is untouched — the login was copied, not moved. Questions later? Copy the documentation for Claude (also in the panel's … menu) and ask it first.`,
-      'Show me',
-      'Copy the Documentation'
-    ).then((choice) => {
-      if (choice === 'Show me') {
-        return vscode.commands.executeCommand('claudes.profiles.focus');
-      }
-      if (choice === 'Copy the Documentation') {
-        return vscode.commands.executeCommand('claudes.copyDocsForClaude');
-      }
-      return undefined;
-    }, () => undefined);
-  } catch (err) {
-    // Never a dialog: this runs unasked at startup, and a failure here leaves
-    // the user exactly where they would have been without it — with an empty
-    // list they can add to by hand.
-    log.appendLine(`First run: could not create an account from the existing login: ${err}`);
+function warnAboutOverridingCredentials(): void {
+  const affected: string[] = [];
+  let found: string[] = [];
+  for (const profile of getProfiles()) {
+    const here = overridingCredentialsIn(profile.configDir);
+    if (here.length === 0) continue;
+    affected.push(displayName(profile));
+    found = [...new Set([...found, ...here])];
   }
+  if (affected.length === 0) return;
+
+  log.appendLine(`Settings that outrank the accounts' logins (${found.join(', ')}) are read by: ${affected.join(', ')}`);
+  void vscode.window.showWarningMessage(
+    `ClaudeS: the Claude Code settings read by ${affected.join(', ')} contain ${found.join(', ')}. ` +
+      'Claude Code uses that instead of the account\'s own login, so these accounts would all bill it. ' +
+      'Remove it from settings.json to keep the accounts separate.'
+  );
 }
 
 /**
@@ -1086,78 +981,47 @@ async function startHereCommand(): Promise<void> {
 }
 
 /**
- * Was a warning: "this terminal runs on X, but this project is assigned to Y".
- *
- * Removed. It made sense when a project had one account and opening another
- * was a mistake worth interrupting. The panel is a set of switches now — two
- * accounts open side by side in one project is how the extension is meant to
- * be used — so the warning fired on the normal case, told the truth, and was
- * useless anyway. A dialog that is right and pointless gets dismissed unread
- * exactly like one that is wrong.
- */
-function warnIfTerminalOnWrongAccount(_opened: ClaudeProfile): void {
-  // Nothing to warn about.
-}
-
-/**
- * Turns the hiding of account names and addresses on or off.
+ * Hides or shows the account names in this window only.
  *
  * A command as well as a setting, because the moment it is wanted — a call
  * starting, a screenshot about to be taken — is not a moment for digging
- * through a settings page.
+ * through a settings page. It never touches another window: see
+ * isAnonymising().
  */
 async function toggleAnonymiseCommand(): Promise<void> {
-  const config = vscode.workspace.getConfiguration('claudes');
-  const now = config.get<boolean>('anonymiseAccounts', false);
+  const hidden = isAnonymising();
+  if (hidden && hiddenEverywhere()) {
+    vscode.window.showInformationMessage(
+      'Names are hidden in every window by the setting claudes.anonymiseAccounts. Turn it off in Settings to show them.'
+    );
+    return;
+  }
 
-  // Claimed before the write, not after: the configuration event fires while
-  // update() is still being awaited, so a flag set on the line below it is set
-  // too late and the listener asks the same question a second time.
-  promptingForStaleTerminals = true;
-  try {
-    await config.update('anonymiseAccounts', !now, vscode.ConfigurationTarget.Global);
-    profilesProvider?.refresh();
+  await setHiddenInThisWindow(!hidden);
+  await syncAnonymisingContext();
+  profilesProvider?.refresh();
 
-    const offered = await offerToReopenStaleTerminals();
-    if (!offered) {
-      vscode.window.showInformationMessage(
-        now
-          ? 'Account names and addresses are visible again.'
-          : 'Accounts are now shown as Account 1, 2, 3 with addresses masked.'
-      );
-    }
-  } finally {
-    promptingForStaleTerminals = false;
+  const offered = await offerToReopenStaleTerminals();
+  if (!offered) {
+    vscode.window.showInformationMessage(
+      hidden
+        ? 'Account names and addresses are visible again in this window.'
+        : 'In this window, accounts are now shown as Account 1, 2, 3 with addresses masked.'
+    );
   }
 }
 
 /**
- * Mirrors the anonymising setting into a context key.
+ * Mirrors whether this window hides the names into a context key.
  *
  * The title bar shows an open eye while the names are visible and a closed one
  * while they are hidden, and a menu entry's icon is fixed in package.json — so
- * which of the two entries is shown has to be decided by a context key.
+ * which of the two entries is shown has to be decided by a context key, which
+ * is per window, like the choice itself.
  */
 async function syncAnonymisingContext(): Promise<void> {
-  const hiding = vscode.workspace
-    .getConfiguration('claudes')
-    .get<boolean>('anonymiseAccounts', false);
-  await vscode.commands.executeCommand('setContext', 'claudes.anonymising', hiding);
+  await vscode.commands.executeCommand('setContext', 'claudes.anonymising', isAnonymising());
 }
-
-/**
- * True while the toggle command is running its own prompt.
- *
- * Changing the setting fires the configuration listener too, and without this
- * the user would be asked the same question twice for one toggle.
- */
-let promptingForStaleTerminals = false;
-
-/**
- * True when the setting changed while this window was in the background, so
- * the question about its terminals is owed the next time it comes to the front.
- */
-let staleTerminalQuestionWaiting = false;
 
 /** True while the dialog is actually on screen, so a second one cannot stack. */
 let staleTerminalPromptOpen = false;
@@ -1187,9 +1051,7 @@ async function offerToReopenStaleTerminals(): Promise<boolean> {
   if (stale.length === 0) return false;
 
   const terminals = stale.length === 1 ? '1 terminal' : `${stale.length} terminals`;
-  const hiding = vscode.workspace
-    .getConfiguration('claudes')
-    .get<boolean>('anonymiseAccounts', false);
+  const hiding = isAnonymising();
 
   staleTerminalPromptOpen = true;
   const choice = await vscode.window.showWarningMessage(
@@ -1225,33 +1087,13 @@ async function switchToProfileCommand(arg?: ProfileItem | ClaudeProfile): Promis
   const target = profileFrom(arg) ?? (await pickProfile('Select the account to use'));
   if (!target) return;
 
-  const previous = getProfiles().find((p) => p.id === getActiveProfileId());
 
   await setActiveProfileId(target.id);
   syncSharedProjects(target);
   profilesProvider?.refresh();
   await openTerminalForProfile(target);
-  warnIfTerminalOnWrongAccount(target);
 }
 
-
-/**
- * Puts everything back the way it was before the switch.
- *
- * Nothing outside this extension has to be undone: switching only decides which
- * account the next ClaudeS terminal opens on. Terminals already open keep the
- * account they were started with, which is what their titles say.
- */
-async function undoSwitch(previous: ClaudeProfile | undefined): Promise<void> {
-  if (previous) {
-    await setActiveProfileId(previous.id);
-  }
-  invalidateIdentity();
-  profilesProvider?.refresh();
-  vscode.window.showInformationMessage(
-    previous ? `Back on ${previous.name}. Nothing was reloaded.` : 'The switch was undone.'
-  );
-}
 
 /**
  * Shows what this extension has put on the machine and what happens if it is
@@ -1273,9 +1115,10 @@ async function showFootprintCommand(): Promise<void> {
     '',
     `\`${installation.configDir}\``,
     '',
-    'Read, never written. A login is copied out of it when an account is created;',
-    'nothing goes back the other way. It keeps its own login, and uninstalling',
-    'ClaudeS leaves it exactly as it is now.',
+    'Never written by ClaudeS, and its login is never copied. Claude Code itself',
+    'writes to the settings, skills and plugins in it when you change them from',
+    'any account that shares them. It keeps its own login, and uninstalling',
+    'ClaudeS leaves it signed in.',
     '',
     '## Your accounts',
     ''
@@ -1289,9 +1132,7 @@ async function showFootprintCommand(): Promise<void> {
     // Honours the anonymising setting: this document is exactly the kind of
     // thing opened mid-call to explain what the extension does, and it would
     // otherwise print the client names and folder paths the panel is hiding.
-    const anonymous = vscode.workspace
-      .getConfiguration('claudes')
-      .get<boolean>('anonymiseAccounts', false);
+    const anonymous = isAnonymising();
 
     profiles.forEach((p, i) => {
       lines.push(
@@ -1302,8 +1143,9 @@ async function showFootprintCommand(): Promise<void> {
     if (anonymous) {
       lines.push('');
       lines.push(
-        '_Names and paths are hidden because `claudes.anonymiseAccounts` is on. ' +
-          'Turn it off to see them._'
+        (hiddenEverywhere()
+          ? '_Names and paths are hidden because `claudes.anonymiseAccounts` is on. Turn it off to see them._'
+          : '_Names and paths are hidden in this window. Click the eye in the ClaudeS panel to show them._')
       );
     }
     lines.push('');
@@ -1322,8 +1164,9 @@ async function showFootprintCommand(): Promise<void> {
   lines.push('');
   lines.push('## Claude Code itself');
   lines.push('');
-  lines.push('Never modified. ClaudeS only sets `CLAUDE_CONFIG_DIR` for the terminals it opens;');
-  lines.push('it does not read, copy or change your credential files.');
+  lines.push('Never modified. ClaudeS sets `CLAUDE_CONFIG_DIR` for the terminals it opens, and');
+  lines.push('removes from them any API key or token that would outrank the account\'s login.');
+  lines.push('It never copies a login: each account is signed in on its own.');
 
   const doc = await vscode.workspace.openTextDocument({
     content: lines.join('\n'),

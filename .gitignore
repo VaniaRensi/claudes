@@ -5,3 +5,6 @@ dist/
 
 # Written by ClaudeS itself when it colours this window
 .vscode/settings.json
+
+# Claude Code local files of whoever works on this repo
+.claude/

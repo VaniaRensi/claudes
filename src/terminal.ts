@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
-import { ClaudeProfile, getProfiles } from './profiles';
-import { ACCOUNT_TERMINAL_ENV } from './discovery';
+import { ClaudeProfile, getProfiles, isAnonymising } from './profiles';
+import { ACCOUNT_TERMINAL_ENV, OVERRIDING_CREDENTIAL_VARS } from './discovery';
 
 /**
  * Variables a Claude Code session hands to the programs it starts. VS Code
@@ -36,16 +36,41 @@ function accountEnv(profile: ClaudeProfile): Record<string, string | null> {
     CLAUDE_CODE_DISABLE_TERMINAL_TITLE: '1'
   };
   for (const name of INHERITED_SESSION_VARS) env[name] = null;
+  for (const name of OVERRIDING_CREDENTIAL_VARS) env[name] = null;
   return env;
+}
+
+/**
+ * The account folder a terminal was opened on, read from its own environment.
+ *
+ * This, never the tab's name, is how a terminal is tied to an account. Names
+ * are not unique: with names hidden they are "Account 1, 2, 3", positions in a
+ * list that shift when an account is deleted — matched by name, the x on one
+ * company's row closed another company's terminal.
+ */
+function configDirOf(terminal: vscode.Terminal): string | undefined {
+  const dir = (terminal.creationOptions as vscode.TerminalOptions)?.env?.CLAUDE_CONFIG_DIR;
+  return typeof dir === 'string' && dir ? path.resolve(dir).toLowerCase() : undefined;
+}
+
+/** The open terminals running on this account, and no others. */
+export function terminalsOnProfile(profile: ClaudeProfile): vscode.Terminal[] {
+  const folder = path.resolve(profile.configDir).toLowerCase();
+  return vscode.window.terminals.filter((t) => !t.exitStatus && configDirOf(t) === folder);
+}
+
+/** The account a terminal belongs to, if it is one of ours. */
+function profileOfTerminal(terminal: vscode.Terminal, profiles: ClaudeProfile[]): ClaudeProfile | undefined {
+  const dir = configDirOf(terminal);
+  return dir ? profiles.find((p) => path.resolve(p.configDir).toLowerCase() === dir) : undefined;
 }
 
 /**
  * Our own name, never Anthropic's.
  *
- * The prefix is also how this extension recognises its own terminals, so a tab
- * reading "Claude:" would be indistinguishable from the official extension's —
- * both on screen, where the user has to know which account a tab spends, and in
- * the code below, which closes and counts terminals by this name.
+ * A tab reading "Claude:" would be indistinguishable from the official
+ * extension's, on screen, where the user has to know which account a tab
+ * spends. The code never goes by this name: see configDirOf().
  */
 export const TERMINAL_NAME_PREFIX = 'ClaudeS';
 
@@ -84,11 +109,7 @@ function setting<T>(key: string, fallback: T): T {
  * VS Code allows an extension to do reliably.
  */
 export function terminalNameFor(profile: ClaudeProfile): string {
-  const anonymous = vscode.workspace
-    .getConfiguration('claudes')
-    .get<boolean>('anonymiseAccounts', false);
-
-  if (!anonymous) return `${TERMINAL_NAME_PREFIX}: ${profile.name}`;
+  if (!isAnonymising()) return `${TERMINAL_NAME_PREFIX}: ${profile.name}`;
 
   const index = getProfiles().findIndex((p) => p.id === profile.id);
   return `${TERMINAL_NAME_PREFIX}: Account ${index >= 0 ? index + 1 : '?'}`;
@@ -171,17 +192,6 @@ export async function focusOnClaudeTerminal(): Promise<void> {
 }
 
 /**
- * Kept so the command registered under this name still resolves.
- *
- * There is no longer a layout to restore: nothing gets rearranged in the first
- * place. It brings the terminal forward, which is the only thing anyone typing
- * "ClaudeS: Restore" now wants.
- */
-export async function restoreWindowLayout(): Promise<void> {
-  await focusOnClaudeTerminal();
-}
-
-/**
  * Closes the terminals running on this account, and no others.
  *
  * Unticking an account in the panel means "stop running this one", so only its
@@ -190,19 +200,7 @@ export async function restoreWindowLayout(): Promise<void> {
  * doing stops, and the conversation stays on disk in that account's folder.
  */
 export function closeTerminalsForProfile(profile: ClaudeProfile): void {
-  // Both spellings are matched, because a terminal keeps the name it was born
-  // with and the anonymising setting can be turned on or off while terminals
-  // are open. Matching only the current form would leave a terminal that the
-  // user just unticked still running, on an account they meant to stop.
-  const index = getProfiles().findIndex((p) => p.id === profile.id);
-  const names = new Set([
-    `${TERMINAL_NAME_PREFIX}: ${profile.name}`,
-    `${TERMINAL_NAME_PREFIX}: Account ${index >= 0 ? index + 1 : '?'}`
-  ]);
-
-  for (const terminal of vscode.window.terminals) {
-    if (names.has(terminal.name)) terminal.dispose();
-  }
+  for (const terminal of terminalsOnProfile(profile)) terminal.dispose();
 }
 
 /**
@@ -214,11 +212,7 @@ export function closeTerminalsForProfile(profile: ClaudeProfile): void {
  * with, not by name, since this is what decides which files are held.
  */
 export async function closeTerminalsForProfileAndWait(profile: ClaudeProfile): Promise<void> {
-  const folder = path.resolve(profile.configDir).toLowerCase();
-  const targets = vscode.window.terminals.filter((t) => {
-    const dir = (t.creationOptions as vscode.TerminalOptions)?.env?.CLAUDE_CONFIG_DIR;
-    return typeof dir === 'string' && path.resolve(dir).toLowerCase() === folder;
-  });
+  const targets = terminalsOnProfile(profile);
   if (targets.length === 0) return;
 
   const pending = new Set(targets);
@@ -261,27 +255,20 @@ export async function closeTerminalsForProfileAndWait(profile: ClaudeProfile): P
  * beside it still carries the client's name. That is the wrong way round for a
  * setting whose whole purpose is a screen someone else is looking at.
  *
- * Matching is by the name a terminal *would* have now against the name it has,
- * for every account, so this finds both directions — names that should be
- * hidden, and names that should be back.
+ * The account comes from the folder the terminal carries, and the name it
+ * should have is compared with the name it has. Guessing the account from the
+ * name reopened a conversation on another company's account once the list had
+ * changed under a hidden "Account 2".
  */
 export function terminalsWithStaleNames(): { terminal: vscode.Terminal; profile: ClaudeProfile }[] {
   const stale: { terminal: vscode.Terminal; profile: ClaudeProfile }[] = [];
   const profiles = getProfiles();
 
   for (const terminal of vscode.window.terminals) {
-    if (!terminal.name.startsWith(`${TERMINAL_NAME_PREFIX}: `)) continue;
-
-    for (const [index, profile] of profiles.entries()) {
-      const plain = `${TERMINAL_NAME_PREFIX}: ${profile.name}`;
-      const hidden = `${TERMINAL_NAME_PREFIX}: Account ${index + 1}`;
-      if (terminal.name !== plain && terminal.name !== hidden) continue;
-
-      // Same account, but the tab is showing the spelling we are no longer in.
-      if (terminal.name !== terminalNameFor(profile)) {
-        stale.push({ terminal, profile });
-      }
-      break;
+    if (terminal.exitStatus) continue;
+    const profile = profileOfTerminal(terminal, profiles);
+    if (profile && terminal.name !== terminalNameFor(profile)) {
+      stale.push({ terminal, profile });
     }
   }
 
@@ -652,10 +639,10 @@ export async function openTerminalForProfile(
   // to switch would make that impossible, and the risk it guarded against is
   // already covered: a terminal cannot silently change account.
   if (setting('closeOtherProfileTerminals', false)) {
+    const own = path.resolve(profile.configDir).toLowerCase();
     for (const terminal of vscode.window.terminals) {
-      if (terminal.name.startsWith(`${TERMINAL_NAME_PREFIX}: `) && terminal.name !== terminalName) {
-        terminal.dispose();
-      }
+      const dir = configDirOf(terminal);
+      if (dir && dir !== own) terminal.dispose();
     }
   }
 

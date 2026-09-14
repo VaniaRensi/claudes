@@ -23,28 +23,20 @@ function makeId(name: string): string {
 }
 
 /**
- * Where the accounts live.
+ * Where the accounts live: this extension's own storage, and nowhere else.
  *
- * They used to be a setting, which put the whole list of accounts in the
- * Settings editor and on the extension's Marketplace page, inviting an edit
- * that can only break the panel. A list of accounts is not a preference: it is
- * this extension's own state, and `globalState` is where VS Code keeps that.
- *
- * `migrateFromSettings()` moves anyone who already has them. The settings keys
- * stay declared and readable so that migration has something to read, and so a
- * downgrade to an older version still finds its accounts.
+ * Development versions kept the list in `settings.json` (`claudes.profiles`),
+ * and that copy was still read whenever the storage was empty. On the machine
+ * it was written on it pointed two companies at folders abandoned days
+ * earlier, with old logins and without the latest conversations: one click on
+ * "Reload the Account List" moved them back silently. The old keys are not
+ * read at all now.
  */
 const PROFILES_KEY = 'profiles';
 const ACTIVE_KEY = 'activeProfileId';
 
 export function getProfiles(): ClaudeProfile[] {
-  if (globalState) {
-    const stored = globalState.get<ClaudeProfile[]>(PROFILES_KEY);
-    if (stored) return stored;
-  }
-  // Before the first migration has run, and for any window that somehow gets
-  // here early: the old location is still the truth.
-  return vscode.workspace.getConfiguration(CONFIG_SECTION).get<ClaudeProfile[]>('profiles', []);
+  return globalState?.get<ClaudeProfile[]>(PROFILES_KEY) ?? [];
 }
 
 export async function saveProfiles(profiles: ClaudeProfile[]): Promise<void> {
@@ -53,36 +45,12 @@ export async function saveProfiles(profiles: ClaudeProfile[]): Promise<void> {
 }
 
 export function getActiveProfileId(): string {
-  if (globalState) {
-    const stored = globalState.get<string>(ACTIVE_KEY);
-    if (stored !== undefined) return stored;
-  }
-  return vscode.workspace.getConfiguration(CONFIG_SECTION).get<string>('activeProfileId', '');
+  return globalState?.get<string>(ACTIVE_KEY) ?? '';
 }
 
 export async function setActiveProfileId(id: string): Promise<void> {
   if (!globalState) throw new Error('Storage is not ready.');
   await globalState.update(ACTIVE_KEY, id);
-}
-
-/**
- * Drops the stored account list so the next read migrates from settings again.
- *
- * For repairing a list that has gone wrong — an account pointing at a folder
- * that has since moved, most likely. It deletes no folder and no credential:
- * the accounts come back from settings.json on the next read, which is where
- * they were before storage existed.
- */
-export async function resetStoredAccounts(): Promise<void> {
-  if (!globalState) throw new Error('Storage is not ready.');
-  await globalState.update(PROFILES_KEY, undefined);
-  await globalState.update(ACTIVE_KEY, undefined);
-}
-
-export function getActiveProfile(): ClaudeProfile | undefined {
-  const id = getActiveProfileId();
-  if (!id) return undefined;
-  return getProfiles().find((p) => p.id === id);
 }
 
 /**
@@ -252,6 +220,38 @@ export async function forgetAssociationsFor(profileId: string): Promise<void> {
   // are rather than deleted on the way past, because a file in someone's
   // project is theirs once it exists, and removing it is not this function's
   // business. It is inert either way — nothing reads it any more.
+}
+
+// --- Hiding who the accounts are ---------------------------------------------------------
+
+/**
+ * Whether this window hides the account names, addresses and folders.
+ *
+ * The eye in the panel acts on its own window only. It used to flip a setting
+ * every VS Code window shares: one click reopened terminals in every window,
+ * conversations and all, including windows the user was not looking at. The
+ * `claudes.anonymiseAccounts` setting remains for hiding everywhere at once,
+ * and while it is on no window can show the names — a shared screen must
+ * never be one click from a client's name.
+ */
+const HIDE_NAMES_KEY = 'claudes.hideNamesInThisWindow';
+let windowState: vscode.Memento | undefined;
+
+export function initWindowPrivacy(state: vscode.Memento): void {
+  windowState = state;
+}
+
+/** Names hidden in every window by the setting. */
+export function hiddenEverywhere(): boolean {
+  return vscode.workspace.getConfiguration(CONFIG_SECTION).get<boolean>('anonymiseAccounts', false);
+}
+
+export function isAnonymising(): boolean {
+  return hiddenEverywhere() || windowState?.get<boolean>(HIDE_NAMES_KEY, false) === true;
+}
+
+export async function setHiddenInThisWindow(hidden: boolean): Promise<void> {
+  await windowState?.update(HIDE_NAMES_KEY, hidden);
 }
 
 /** Sets or clears an account's colour. */

@@ -26,6 +26,55 @@ const CREDENTIALS_FILE = '.credentials.json';
 /** Set on every terminal ClaudeS opens, so anything started from one knows. */
 export const ACCOUNT_TERMINAL_ENV = 'CLAUDES_ACCOUNT_TERMINAL';
 
+/**
+ * Credentials that outrank an account's own login. Per the documented
+ * precedence (authentication.md), a cloud provider, `ANTHROPIC_AUTH_TOKEN`,
+ * `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` all win over the login in
+ * the account's folder. Inherited by our terminals, one of them would make
+ * every account bill the same key while each tab names a different company.
+ */
+export const OVERRIDING_CREDENTIAL_VARS = [
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY'
+];
+
+/**
+ * The environment for running `claude` on one account: its folder, and none of
+ * the credentials that would outrank the folder's login.
+ */
+export function envForAccount(configDir: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CONFIG_DIR: configDir };
+  for (const name of OVERRIDING_CREDENTIAL_VARS) delete env[name];
+  return env;
+}
+
+/**
+ * What in an account's `settings.json` would outrank its login: an
+ * `apiKeyHelper`, or one of the credentials above set in its `env` block.
+ *
+ * A terminal's environment can be cleaned; a settings file cannot, and with a
+ * shared setup one file speaks for every account. Read only — the file is the
+ * user's, and they decide what to do about it.
+ */
+export function overridingCredentialsIn(configDir: string): string[] {
+  let settings: { apiKeyHelper?: unknown; env?: Record<string, unknown> };
+  try {
+    settings = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
+  } catch {
+    return [];
+  }
+  const found: string[] = [];
+  if (settings.apiKeyHelper) found.push('apiKeyHelper');
+  for (const name of OVERRIDING_CREDENTIAL_VARS) {
+    if (settings.env && settings.env[name] !== undefined) found.push(`env.${name}`);
+  }
+  return found;
+}
+
 /** Files that indicate a directory really is a Claude Code config dir. */
 const MARKER_ENTRIES = ['.credentials.json', '.claude.json', 'settings.json', 'projects', 'sessions'];
 

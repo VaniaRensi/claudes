@@ -28,3 +28,8 @@ scripts/**
 
 # Editor config for developing this, not for running it.
 .vscode/**
+
+# Claude Code's own files for whoever works on this repo: local permissions
+# can name client paths and hosts. 0.2.1 nearly shipped one.
+.claude/**
+**/.claude/**

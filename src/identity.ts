@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import { envForAccount } from './discovery';
 
 /**
  * Who is actually signed in inside a profile's config folder.
@@ -109,7 +110,7 @@ export function runAuthLogout(configDir: string): Promise<void> {
       claudeCommand(),
       ['auth', 'logout'],
       {
-        env: { ...process.env, CLAUDE_CONFIG_DIR: configDir },
+        env: envForAccount(configDir),
         timeout: 30_000,
         windowsHide: true,
         shell: process.platform === 'win32'
@@ -131,9 +132,9 @@ function runAuthStatus(configDir: string): Promise<AccountIdentity> {
       claudeCommand(),
       ['auth', 'status'],
       {
-        // Only this variable is overridden: the profile decides which config
-        // Claude Code reads, exactly as it does for the terminals we open.
-        env: { ...process.env, CLAUDE_CONFIG_DIR: configDir },
+        // The same environment as the terminals we open, so the panel names
+        // the login those terminals will actually use.
+        env: envForAccount(configDir),
         timeout: 10_000,
         windowsHide: true,
         shell: process.platform === 'win32'

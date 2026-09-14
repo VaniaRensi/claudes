@@ -55,6 +55,6 @@ Open an issue at https://github.com/VaniaRensi/claudes/issues and include:
 
 ## Removing it cleanly
 
-Uninstalling from VS Code is enough: your Claude Code folder is never written
-to, and your account folders are left in place because they hold your logins.
+Uninstalling from VS Code is enough: ClaudeS never writes to your Claude Code
+folder, and your account folders are left in place because they hold your logins.
 Delete `~/.claudes` yourself if you want them gone.

@@ -2,7 +2,7 @@
   "name": "claudes",
   "displayName": "ClaudeS - Accounts Manager",
   "description": "Keep several Claude Code accounts side by side and open a terminal on any of them with one click. Conversations, history and logins never cross between accounts; your settings, skills and MCP servers stay shared, and ClaudeS never writes to your Claude Code installation. Independent project, not affiliated with Anthropic.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "VeleaWebVR",
   "engines": {
     "vscode": "^1.93.0"
@@ -172,6 +172,28 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Hide who these accounts belong to, **in every window**. The eye at the top of the ClaudeS panel does the same for its own window only; while this setting is on, no window can show the names.\n\nAccounts are listed as **Account 1**, **Account 2**, ... and signed-in addresses are masked as `o****@l****.com` — enough shape to recognise your own, not enough for anyone else. Folder paths are hidden too, since they carry the name.\n\nFor sharing a screen, presenting, or taking screenshots. Colours stay as they are: they identify a row to you and reveal nothing.\n\nTerminals already open keep the name they were created with.",
+          "scope": "application"
+        },
+        "claudes.statusLine": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the account and its plan usage at the bottom of each ClaudeS terminal: the 5-hour window, when it resets, the week, and how full the conversation's context is.\n\nThe figures come from Claude Code itself — ClaudeS reads no token and makes no network request for them. The status line is given to each session with `claude --settings`, so your Claude Code settings are not changed, and a status line you configured yourself is left in place. Needs `node` on your PATH.\n\nApplies to terminals opened after the change.",
+          "scope": "application"
+        },
+        "claudes.usageOrangeFrom": {
+          "type": "number",
+          "default": 70,
+          "minimum": 1,
+          "maximum": 100,
+          "markdownDescription": "In the status line at the bottom of each terminal, the 5-hour and weekly usage turn **orange** from this percentage; below it they are green. Applies at once, also to terminals already open.",
+          "scope": "application"
+        },
+        "claudes.usageRedFrom": {
+          "type": "number",
+          "default": 90,
+          "minimum": 1,
+          "maximum": 100,
+          "markdownDescription": "In the status line at the bottom of each terminal, the 5-hour and weekly usage turn **red** from this percentage. Never below the orange one. Applies at once, also to terminals already open.",
           "scope": "application"
         },
         "claudes.autoStartClaude": {

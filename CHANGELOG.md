@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.2] — 2026-09-15
+
+- **The bottom of each terminal shows the account and its plan usage**: the
+  5-hour window and when it resets, the week, and how full the conversation's
+  context is — where you are already looking while you work. The figures come
+  from Claude Code itself, so ClaudeS reads no token and makes no network
+  request for them, and the status line is given to each session on its own,
+  so your Claude Code settings are not changed. A status line you set up
+  yourself is left in place. `claudes.statusLine` turns it off.
+- **The usage figures change colour** as a limit gets close: green, then
+  orange from 70%, then red from 90%. Both points are settings
+  (`claudes.usageOrangeFrom`, `claudes.usageRedFrom`) and apply at once, also
+  to terminals already open.
+- **An empty column no longer stays behind** when you close the last terminal
+  in it. VS Code locks a column that holds a terminal and leaves the empty pane
+  with its padlock; ClaudeS now closes a column it has left empty, and only one
+  that is completely empty.
+- **The terminal tab shows the account's name on its own**, without the
+  "ClaudeS:" prefix in front of it. The tab already carries the account's
+  colour and its icon, so the prefix only took room from the name.
+
 ## [0.2.1] — 2026-09-14
 
 A privacy and safety release. Please update.

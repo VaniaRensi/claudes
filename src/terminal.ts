@@ -30,10 +30,15 @@ function accountEnv(profile: ClaudeProfile): Record<string, string | null> {
     CLAUDE_CONFIG_DIR: profile.configDir,
     [ACCOUNT_TERMINAL_ENV]: '1',
     // Claude Code retitles its terminal after the conversation, and a resumed
-    // one replaced "ClaudeS: Account 2" with nothing: the tab stopped saying
+    // one replaced the account name with nothing: the tab stopped saying
     // whose credits it spends, and ClaudeS could no longer find its own tab.
     // Documented: "Set to 1 to disable automatic terminal title updates".
-    CLAUDE_CODE_DISABLE_TERMINAL_TITLE: '1'
+    CLAUDE_CODE_DISABLE_TERMINAL_TITLE: '1',
+    // For the status line at the bottom of the terminal, which says which
+    // account this is. The tab's own name, so hidden names stay hidden there.
+    CLAUDES_ACCOUNT_NAME: terminalNameFor(profile),
+    // Where the status line reads the colour thresholds from, on each redraw.
+    ...(statusLineConfig ? { CLAUDES_STATUS_CONFIG: statusLineConfig } : {})
   };
   for (const name of INHERITED_SESSION_VARS) env[name] = null;
   for (const name of OVERRIDING_CREDENTIAL_VARS) env[name] = null;
@@ -66,13 +71,36 @@ function profileOfTerminal(terminal: vscode.Terminal, profiles: ClaudeProfile[])
 }
 
 /**
- * Our own name, never Anthropic's.
- *
- * A tab reading "Claude:" would be indistinguishable from the official
- * extension's, on screen, where the user has to know which account a tab
- * spends. The code never goes by this name: see configDirOf().
+ * A settings file holding ClaudeS's status line, handed to each `claude` it
+ * starts with `--settings`: that applies to that session only
+ * (cli-reference.md), so nothing is written to the user's Claude Code
+ * settings. Undefined when the status line cannot run here.
  */
-export const TERMINAL_NAME_PREFIX = 'ClaudeS';
+let statusLineSettings: string | undefined;
+/** The thresholds file the status line reads; see prepareStatusLine(). */
+let statusLineConfig: string | undefined;
+
+export function setStatusLineSettings(file: string | undefined, config?: string): void {
+  statusLineSettings = file;
+  statusLineConfig = config;
+}
+
+/**
+ * The `--settings` argument for this account, or nothing.
+ *
+ * A status line the user set up themselves wins: a session setting would
+ * override theirs, and taking away something they configured is not ours to do.
+ */
+function statusLineArgument(profile: ClaudeProfile): string {
+  if (!statusLineSettings || !setting('statusLine', true)) return '';
+  try {
+    const own = JSON.parse(fs.readFileSync(path.join(profile.configDir, 'settings.json'), 'utf8')) as { statusLine?: unknown };
+    if (own.statusLine) return '';
+  } catch {
+    // No settings file, or an unreadable one: nothing of theirs to respect.
+  }
+  return `--settings "${statusLineSettings}" `;
+}
 
 /**
  * The extension's output channel, handed in at activation.
@@ -100,7 +128,7 @@ function setting<T>(key: string, fallback: T): T {
  *
  * Anonymising replaces the account's name with its position in the list, the
  * same stand-in the panel uses, so a screen being shared or photographed shows
- * `ClaudeS: Account 2` rather than a client's name. The colour is untouched:
+ * `Account 2` rather than a client's name. The colour is untouched:
  * it identifies the row to its owner and tells a stranger nothing.
  *
  * A terminal keeps the name it was born with, so turning this on renames
@@ -109,10 +137,10 @@ function setting<T>(key: string, fallback: T): T {
  * VS Code allows an extension to do reliably.
  */
 export function terminalNameFor(profile: ClaudeProfile): string {
-  if (!isAnonymising()) return `${TERMINAL_NAME_PREFIX}: ${profile.name}`;
+  if (!isAnonymising()) return profile.name;
 
   const index = getProfiles().findIndex((p) => p.id === profile.id);
-  return `${TERMINAL_NAME_PREFIX}: Account ${index >= 0 ? index + 1 : '?'}`;
+  return `Account ${index >= 0 ? index + 1 : '?'}`;
 }
 
 /**
@@ -176,9 +204,7 @@ function tabColorFor(profile: ClaudeProfile): vscode.ThemeColor | undefined {
  * anything already on screen.
  */
 export async function focusOnClaudeTerminal(): Promise<void> {
-  const claudeTerminal = vscode.window.terminals.find((t) =>
-    t.name.startsWith(`${TERMINAL_NAME_PREFIX}: `)
-  );
+  const claudeTerminal = vscode.window.terminals.find((t) => !t.exitStatus && !!configDirOf(t));
   if (claudeTerminal) {
     claudeTerminal.show();
     return;
@@ -684,7 +710,7 @@ export async function openTerminalForProfile(
   // --session-id when there is nothing to resume yet: a terminal closed
   // before its first message left no transcript, and resuming it would fail.
   const flag = resume?.sessionId && transcriptExists(profile, sessionId) ? '--resume' : '--session-id';
-  const ready = sendWhenShellIsReady(terminal, `${command} ${flag} ${sessionId}`);
+  const ready = sendWhenShellIsReady(terminal, `${command} ${statusLineArgument(profile)}${flag} ${sessionId}`);
   void findClaudeProcess(profile, sessionId);
   return { terminal, ready };
 }

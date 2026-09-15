@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFile } from 'child_process';
 import {
   ClaudeProfile,
   getProfiles,
@@ -47,7 +48,8 @@ import {
   initSessionMemory,
   onSessionTerminalClosed,
   recordSessionColumns,
-  reopenRememberedSessions
+  reopenRememberedSessions,
+  setStatusLineSettings
 } from './terminal';
 import {
   shareSettings,
@@ -276,6 +278,9 @@ export function activate(context: vscode.ExtensionContext): void {
         if (e.affectsConfiguration('claudes')) {
           profilesProvider?.refresh();
         }
+        if (e.affectsConfiguration('claudes.usageOrangeFrom') || e.affectsConfiguration('claudes.usageRedFrom')) {
+          writeStatusColours();
+        }
 
         // The setting hides names in every window, and every window hears it
         // change. Only the window where it was changed offers to reopen its
@@ -304,6 +309,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.window.onDidCloseTerminal((terminal) => {
         onSessionTerminalClosed(terminal);
         profilesProvider?.refresh();
+        void closeEmptyColumns();
       }),
       // Where each conversation's tab sits, so it comes back to the same column.
       vscode.window.tabGroups.onDidChangeTabs(() => void recordSessionColumns()),
@@ -329,7 +335,9 @@ export function activate(context: vscode.ExtensionContext): void {
     warnAboutOverridingCredentials();
 
     // The conversations that were open when VS Code last closed or crashed.
-    reopenRememberedSessions()
+    // After the status line is ready, so reopened terminals get it too.
+    prepareStatusLine(context)
+      .then(() => reopenRememberedSessions())
       .then(() => profilesProvider?.refresh())
       .catch((err) => log.appendLine(`Could not reopen the previous sessions: ${err}`));
     log.appendLine('Activation complete.');
@@ -533,6 +541,89 @@ async function openConfigFolderCommand(): Promise<void> {
   }
   const uri = vscode.Uri.file(profile.configDir);
   await vscode.commands.executeCommand('revealFileInOS', uri);
+}
+
+/** The colour thresholds the status line reads on every redraw. */
+let statusConfigFile: string | undefined;
+
+/**
+ * Writes the user's colour thresholds where the status line reads them. Red is
+ * never below orange: a setting that says otherwise is read as red from the
+ * orange point, so a figure cannot skip its warning.
+ */
+function writeStatusColours(): void {
+  if (!statusConfigFile) return;
+  const config = vscode.workspace.getConfiguration('claudes');
+  const orangeAt = config.get<number>('usageOrangeFrom', 70);
+  const redAt = Math.max(orangeAt, config.get<number>('usageRedFrom', 90));
+  try {
+    fs.writeFileSync(statusConfigFile, JSON.stringify({ orangeAt, redAt }), 'utf8');
+  } catch (err) {
+    log.appendLine(`Status line: could not save the colours: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Gets the status line ready for the terminals ClaudeS opens: the account and
+ * its plan usage at the bottom of the Claude Code screen.
+ *
+ * The settings file lives in this extension's own storage and is handed to
+ * each session with `--settings`, so the user's Claude Code settings are never
+ * written. The script needs `node`; where there is none, terminals simply start
+ * without it. Paths use forward slashes: on Windows Claude Code runs the command
+ * through Git Bash, which drops backslashes (statusline.md).
+ */
+async function prepareStatusLine(context: vscode.ExtensionContext): Promise<void> {
+  const hasNode = await new Promise<boolean>((resolve) =>
+    execFile('node', ['--version'], { windowsHide: true, timeout: 5000 }, (err) => resolve(!err))
+  );
+  if (!hasNode) {
+    log.appendLine('Status line: node was not found, so terminals start without it.');
+    setStatusLineSettings(undefined);
+    return;
+  }
+  try {
+    const script = path.join(context.extensionPath, 'dist', 'statusline.js').split(path.sep).join('/');
+    const dir = context.globalStorageUri.fsPath;
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'statusline-settings.json');
+    const settings = { statusLine: { type: 'command', command: `node "${script}"`, padding: 0 } };
+    fs.writeFileSync(file, JSON.stringify(settings, null, 2), 'utf8');
+    statusConfigFile = path.join(dir, 'statusline-colours.json');
+    writeStatusColours();
+    setStatusLineSettings(file, statusConfigFile);
+  } catch (err) {
+    log.appendLine(`Status line: could not prepare it: ${err instanceof Error ? err.message : String(err)}`);
+    setStatusLineSettings(undefined);
+  }
+}
+
+/**
+ * Closes a column that a terminal of ours has left empty.
+ *
+ * VS Code locks a column that holds a terminal, and a locked column stays
+ * behind when its last tab closes: an empty pane with a padlock, which cannot
+ * be typed in and has to be closed by hand every time.
+ *
+ * Only columns with nothing in them are closed, and only when another column
+ * remains, so this can never take away anything open — the rule that ClaudeS
+ * closes nothing in the window stands for everything except the emptiness it
+ * leaves behind itself.
+ */
+async function closeEmptyColumns(): Promise<void> {
+  // The tab is gone from the model a moment after the terminal closes.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const groups = vscode.window.tabGroups.all;
+  const empty = groups.filter((g) => g.tabs.length === 0);
+  if (empty.length === 0 || empty.length === groups.length) return;
+  try {
+    await vscode.window.tabGroups.close(empty);
+    log.appendLine(`[terminal] closed ${empty.length} empty column(s) left by a terminal`);
+  } catch (err) {
+    // VS Code may refuse while the window is rearranging: an empty column is
+    // untidy, not broken, and the next close will try again.
+    log.appendLine(`[terminal] could not close an empty column: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 # ClaudeS — Accounts Manager
 
-![version](https://img.shields.io/badge/version-0.2.1-blue)
+![version](https://img.shields.io/badge/version-0.2.2-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.93+-blueviolet)
 ![conversations](https://img.shields.io/badge/conversations-never%20shared%20between%20accounts-brightgreen)
@@ -33,6 +33,21 @@ history. You sign in once per account; switching never asks again.
 name — so the terminal you are typing into always says whose credits it spends.
 To keep that name there, ClaudeS asks Claude Code not to retitle its terminals
 after the conversation (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE`).
+
+**See what is left, where you are working.** The bottom line of each ClaudeS
+terminal says which account it is and how much of that account's plan is used:
+the 5-hour window and when it resets, the week, and how full the conversation's
+context is — for example `Client A · 5h 6% (resets 13:49) · week 34% · context 12%`.
+The figures come from Claude Code itself, after the first reply of a session;
+ClaudeS reads no token and makes no request for them. The line is handed to each
+session with `claude --settings`, so your Claude Code settings are not changed,
+and a status line you set up yourself stays. Turn it off with
+`claudes.statusLine`.
+
+The usage figures are green, turn orange from 70% and red from 90%, so a limit
+coming close is visible without reading the number. Change the two points with
+`claudes.usageOrangeFrom` and `claudes.usageRedFrom`; terminals already open
+follow at once.
 
 **Click + to open a terminal.** Each click opens one more terminal on that
 account and starts `claude` in it, so several chats on the same account are just

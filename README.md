@@ -49,6 +49,8 @@ coming close is visible without reading the number. Change the two points with
 `claudes.usageOrangeFrom` and `claudes.usageRedFrom`; terminals already open
 follow at once.
 
+![The bottom of three terminals: each line names its account and shows the 5-hour window with its reset time, the week and the context](https://raw.githubusercontent.com/VaniaRensi/claudes/master/docs/status-line.png)
+
 **Click + to open a terminal.** Each click opens one more terminal on that
 account and starts `claude` in it, so several chats on the same account are just
 several clicks. The number next to the account says how many are open. Hover

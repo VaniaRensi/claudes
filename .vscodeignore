@@ -33,3 +33,6 @@ scripts/**
 # can name client paths and hosts. 0.2.1 nearly shipped one.
 .claude/**
 **/.claude/**
+
+# Visual Studio's own index and settings for this machine.
+.vs/**

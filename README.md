@@ -1,6 +1,6 @@
 # ClaudeS — Accounts Manager
 
-![version](https://img.shields.io/badge/version-0.2.2-blue)
+![version](https://img.shields.io/badge/version-0.2.3-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.93+-blueviolet)
 ![conversations](https://img.shields.io/badge/conversations-never%20shared%20between%20accounts-brightgreen)
@@ -11,6 +11,18 @@ them with one click.
 If you work for more than one client, each with their own Claude subscription,
 this stops one client's work from spending another's credits, and keeps each
 client's conversations in that client's account.
+
+> [!IMPORTANT]
+> **Before you start: ClaudeS needs the Claude Code CLI** — the `claude` command
+> you run in a terminal. The Claude Code extension for VS Code and the Claude
+> desktop app do **not** provide it: install it separately, once per computer.
+>
+> - **Windows** (PowerShell): `irm https://claude.ai/install.ps1 | iex`
+> - **macOS / Linux**: `curl -fsSL https://claude.ai/install.sh | bash`
+>
+> Then open a new terminal and check that `claude --version` prints a version.
+> If ClaudeS cannot find it, it tells you so and offers to run the installer.
+> Full instructions: [code.claude.com/docs/en/setup](https://code.claude.com/docs/en/setup).
 
 ![The accounts panel: three accounts, each with a + and a count of its open terminals, the hovered one showing x](https://raw.githubusercontent.com/VaniaRensi/claudes/master/docs/accounts-panel.png)
 
@@ -197,7 +209,10 @@ ClaudeS and your installation is still signed in, still yours.
 ## Requirements
 
 - VS Code 1.93 or later
-- The `claude` CLI on your PATH ([install](https://claude.com/claude-code))
+- The Claude Code CLI (`claude`), installed with the official installer — see
+  **Before you start** at the top. The VS Code extension for Claude Code is not
+  enough on its own. If the installer left `claude` in `~/.local/bin` without
+  adding that folder to your PATH, ClaudeS finds it there anyway.
 
 ## Settings
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.3] — 2026-10-26
+
+- **ClaudeS says when the Claude Code CLI is missing, and offers to install
+  it.** It needs the `claude` command, which the Claude Code extension for VS
+  Code does not provide. Before, adding an account on a computer without it
+  opened a terminal that only said "command not found". Now ClaudeS shows what
+  is missing and can run Anthropic's official installer in a terminal, with the
+  command shown before you click. You choose whether it also adds the CLI's
+  folder to your PATH (**Install and add to PATH**) or leaves the PATH alone
+  (**Install only**).
+- **A CLI the installer left off your PATH is found anyway.** The installer
+  puts `claude` in `~/.local/bin` and does not add that folder to your PATH;
+  ClaudeS now looks there too, and gives its terminals that folder.
+- **The requirement is stated up front**, at the top of the README and in the
+  marketplace description.
+
 ## [0.2.2] — 2026-09-15
 
 - **The bottom of each terminal shows the account and its plan usage**: the

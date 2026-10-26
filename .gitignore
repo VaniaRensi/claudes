@@ -8,3 +8,5 @@ dist/
 
 # Claude Code local files of whoever works on this repo
 .claude/
+
+.vs/

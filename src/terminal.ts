@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { ClaudeProfile, getProfiles, isAnonymising } from './profiles';
 import { ACCOUNT_TERMINAL_ENV, OVERRIDING_CREDENTIAL_VARS } from './discovery';
+import { findClaudeCli, offerToInstallClaudeCli, withClaudeOnPath } from './cli';
 
 /**
  * Variables a Claude Code session hands to the programs it starts. VS Code
@@ -686,6 +687,9 @@ export async function openTerminalForProfile(
 
   const env = accountEnv(profile);
   if (sessionId) env[SESSION_ENV] = sessionId;
+  const command = setting('claudeCommand', 'claude').trim() || 'claude';
+  const cli = findClaudeCli(command);
+  withClaudeOnPath(env, cli);
 
   const terminal = vscode.window.createTerminal({
     name: terminalName,
@@ -705,8 +709,13 @@ export async function openTerminalForProfile(
   terminal.show();
 
   if (!sessionId) return { terminal, ready: Promise.resolve() };
+  // Without the CLI the terminal stays an empty shell, rather than showing
+  // "command not found" with no word on what is missing.
+  if (!cli.found) {
+    void offerToInstallClaudeCli();
+    return { terminal, ready: Promise.resolve() };
+  }
 
-  const command = setting('claudeCommand', 'claude').trim() || 'claude';
   // --session-id when there is nothing to resume yet: a terminal closed
   // before its first message left no transcript, and resuming it would fail.
   const flag = resume?.sessionId && transcriptExists(profile, sessionId) ? '--resume' : '--session-id';
@@ -773,6 +782,14 @@ function sendWhenShellIsReady(terminal: vscode.Terminal, command: string): Promi
  * that account's folder and nowhere else.
  */
 export function signInToProfile(profile: ClaudeProfile): void {
+  const command = setting('claudeCommand', 'claude').trim() || 'claude';
+  const cli = findClaudeCli(command);
+  if (!cli.found) {
+    void offerToInstallClaudeCli();
+    return;
+  }
+  const env = accountEnv(profile);
+  withClaudeOnPath(env, cli);
   const terminal = vscode.window.createTerminal({
     name: terminalNameFor(profile),
     color: tabColorFor(profile),
@@ -780,9 +797,8 @@ export function signInToProfile(profile: ClaudeProfile): void {
     // A sign-in has nothing worth reviving, and a revived one comes back as an
     // anonymous shell.
     isTransient: true,
-    env: accountEnv(profile)
+    env
   });
   terminal.show();
-  const command = setting('claudeCommand', 'claude').trim() || 'claude';
   terminal.sendText(`${command} auth login`, true);
 }

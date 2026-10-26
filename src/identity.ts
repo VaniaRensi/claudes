@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { envForAccount } from './discovery';
+import { findClaudeCli, withClaudeOnPath } from './cli';
 
 /**
  * Who is actually signed in inside a profile's config folder.
@@ -60,6 +61,13 @@ function claudeCommand(): string {
   );
 }
 
+/** The account's environment, with the CLI's folder on PATH if it is not there already. */
+function cliEnvForAccount(configDir: string): NodeJS.ProcessEnv {
+  const env = envForAccount(configDir);
+  withClaudeOnPath(env, findClaudeCli(claudeCommand()));
+  return env;
+}
+
 export async function readIdentity(configDir: string, force = false): Promise<AccountIdentity> {
   // Without a config dir, Claude Code would answer for the machine's default
   // account — and the panel would show that stranger's email under whichever
@@ -110,7 +118,7 @@ export function runAuthLogout(configDir: string): Promise<void> {
       claudeCommand(),
       ['auth', 'logout'],
       {
-        env: envForAccount(configDir),
+        env: cliEnvForAccount(configDir),
         timeout: 30_000,
         windowsHide: true,
         shell: process.platform === 'win32'
@@ -128,13 +136,17 @@ export function runAuthLogout(configDir: string): Promise<void> {
 
 function runAuthStatus(configDir: string): Promise<AccountIdentity> {
   return new Promise((resolve) => {
+    if (!findClaudeCli(claudeCommand()).found) {
+      resolve({ loggedIn: false, error: 'Claude Code CLI not installed. Click + to install it.' });
+      return;
+    }
     execFile(
       claudeCommand(),
       ['auth', 'status'],
       {
         // The same environment as the terminals we open, so the panel names
         // the login those terminals will actually use.
-        env: envForAccount(configDir),
+        env: cliEnvForAccount(configDir),
         timeout: 10_000,
         windowsHide: true,
         shell: process.platform === 'win32'

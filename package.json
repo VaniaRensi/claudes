@@ -1,8 +1,8 @@
 {
   "name": "claudes",
   "displayName": "ClaudeS - Accounts Manager",
-  "description": "Keep several Claude Code accounts side by side and open a terminal on any of them with one click. Conversations, history and logins never cross between accounts; your settings, skills and MCP servers stay shared, and ClaudeS never writes to your Claude Code installation. Independent project, not affiliated with Anthropic.",
-  "version": "0.2.2",
+  "description": "Keep several Claude Code accounts side by side and open a terminal on any of them with one click. Conversations, history and logins never cross between accounts; your settings, skills and MCP servers stay shared, and ClaudeS never writes to your Claude Code installation. Requires the Claude Code CLI (the `claude` command), installed separately: the Claude Code extension alone is not enough. Independent project, not affiliated with Anthropic.",
+  "version": "0.2.3",
   "publisher": "VeleaWebVR",
   "engines": {
     "vscode": "^1.93.0"
